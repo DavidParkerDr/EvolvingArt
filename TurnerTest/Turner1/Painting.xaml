@@ -1,0 +1,91 @@
+﻿<UserControl x:Class="Turner1.Painting"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="300" d:DesignWidth="400">
+
+    <Grid x:Name="LayoutRoot" MouseEnter="LayoutRoot_MouseEnter" MouseLeftButtonUp="LayoutRoot_MouseLeftButtonUp" MouseLeave="LayoutRoot_MouseLeave" Background="Black">
+        <MediaElement x:Name="FrontSound" AutoPlay="False" MediaFailed="FrontSound_MediaFailed" MediaEnded="FrontSound_MediaEnded"></MediaElement>
+        <MediaElement x:Name="BackSound" AutoPlay="False" MediaFailed="BackSound_MediaFailed" MediaEnded="BackSound_MediaEnded"></MediaElement>
+        <Canvas x:Name="Sides" RenderTransformOrigin="0.5,0.5" Width="175" Height="224">
+            <Canvas.RenderTransform>
+                <TransformGroup>
+                    <RotateTransform x:Name="PaintingRotate" Angle="0" />
+                    <ScaleTransform x:Name="PaintingScale" ScaleX="1" ScaleY="1"/>
+                </TransformGroup>
+            </Canvas.RenderTransform>
+            <Image Stretch="UniformToFill" x:Name="PaintingImageBack" Width="175" Height="224"/>
+            <Image Stretch="UniformToFill" x:Name="PaintingImageFront" Width="175" Height="224"/>
+        </Canvas>
+        <Button Name="MoveButton" Margin="1,1,1,1" Width="41" Height="41" Click="MoveButton_Click" Background="Gray" VerticalAlignment="Top" HorizontalAlignment="Right">
+            <ToolTipService.ToolTip>
+                <ToolTip Content="Move the painting to another slot"></ToolTip>
+            </ToolTipService.ToolTip>
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Image Name="MoveImage" Width="41" Height="41" MouseEnter="MoveButton_MouseEnter" MouseLeave="MoveButton_MouseLeave" Source="/Turner1;component/Images/move.png">
+                            <Image.RenderTransform>
+                                <ScaleTransform x:Name="MoveScale" ScaleX="1" ScaleY="1"/>
+                            </Image.RenderTransform>
+                        </Image>
+                    </Grid>
+                </ControlTemplate>
+            </Button.Template>
+
+        </Button>
+        <StackPanel x:Name="Buttons" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+            <Button Name="FlipHorizontalButton" Margin="1,1,1,1" Width="55" Height="70" Click="FlipHorizontalButton_Click" Background="Gray">
+                <ToolTipService.ToolTip>
+                    <ToolTip Content="Flip the painting horizontally, to show the back"></ToolTip>
+                </ToolTipService.ToolTip>
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Image Name="FlipHorizontalImage" Width="55" Height="70" MouseEnter="FlipHorizontalButton_MouseEnter" MouseLeave="FlipHorizontalButton_MouseLeave" Source="/Turner1;component/Images/flipHorizontal.png">
+                                <Image.RenderTransform>
+                                    <ScaleTransform x:Name="FlipHorizontalScale" ScaleX="1" ScaleY="1"/>
+                                </Image.RenderTransform>
+                            </Image>
+                        </Grid>
+                    </ControlTemplate>
+                </Button.Template>
+                
+            </Button>
+            <Button Name="Rotate180Button" Margin="1,1,1,1" Width="55" Height="70" Click="Rotate180Button_Click">
+                <ToolTipService.ToolTip>
+                    <ToolTip Content="Turn the painting upside down"></ToolTip>
+                </ToolTipService.ToolTip>
+                    <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Image Name="Rotate180Image" Width="55" Height="70" MouseEnter="Rotate180Button_MouseEnter" MouseLeave="Rotate180Button_MouseLeave" Source="/Turner1;component/Images/rotate180.png">
+                                <Image.RenderTransform>
+                                    <ScaleTransform x:Name="Rotate180Scale" ScaleX="1" ScaleY="1"/>
+                                </Image.RenderTransform>
+                            </Image>                            
+                        </Grid>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+            <Button Name="FlipVerticalButton" Margin="1,1,1,1" Width="55" Height="70" Click="FlipVerticalButton_Click">
+                <ToolTipService.ToolTip>
+                    <ToolTip Content="Flip the painting vertically, to show the back"></ToolTip>
+                </ToolTipService.ToolTip>
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Image Name="FlipVerticalImage" Width="55" Height="70" MouseEnter="FlipVerticalButton_MouseEnter" MouseLeave="FlipVerticalButton_MouseLeave" Source="/Turner1;component/Images/flipVertical.png">
+                                <Image.RenderTransform>
+                                    <ScaleTransform x:Name="FlipVerticalScale" ScaleX="1" ScaleY="1"/>
+                                </Image.RenderTransform>
+                            </Image>
+                        </Grid>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>

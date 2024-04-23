@@ -1,0 +1,107 @@
+﻿<UserControl xmlns:sdk="http://schemas.microsoft.com/winfx/2006/xaml/presentation/sdk"  x:Class="Turner1.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    d:DesignHeight="700" d:DesignWidth="700">
+
+    <Viewbox HorizontalAlignment="Center" VerticalAlignment="Center">
+        
+        <StackPanel x:Name="LayoutRoot" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal" Background="Black" MouseMove="LayoutRoot_MouseMove">
+            <StackPanel x:Name="InnerLayoutRoot" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Vertical" Background="Black" MouseMove="LayoutRoot_MouseMove">
+            </StackPanel>
+            <sdk:TabControl x:Name="UserInterfaceTabs" FontSize="20" Margin="5,5,5,5" SelectionChanged="TabControl_SelectionChanged" Background="Black" Visibility="Visible">
+                <sdk:TabItem Header="Manual">
+                    <StackPanel x:Name="ManualButtons" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Vertical">
+
+                        <Button Name="RandomiseButton"  Margin="5,5,5,5" Width="300" Height="70" Content="Randomise" FontSize="20" Click="RandomiseButton_Click"></Button>
+                        <Button Name="ToggleShowButton" Margin="5,5,5,5" Width="300" Height="70" Content="Start Random Slideshow" FontSize="20" Click="ToggleShowButton_Click"></Button>
+                        <Button Name="AnalyseButton" Margin="5,5,5,5" Width="300" Height="70" Content="Analyse Current Grid" FontSize="20" Click="AnalyseButton_Click"></Button>
+                        <Button Name="SaveCurrentButton"  Margin="5,5,5,5" Width="300" Height="70" Content="Save Current Grid" FontSize="20" Click="SaveCurrentButton_Click"></Button>
+                        <Button Name="LoadPreviousButton"  Margin="5,5,5,5" Width="300" Height="70" Content="Load Previous Grid" FontSize="20" Click="LoadPreviousButton_Click"></Button>
+                        <Button Name="HideUserInterfaceButton"  Margin="5,5,5,5" Width="300" Height="70" Content="Hide UI" FontSize="20" Click="HideUserInterfaceButton_Click"></Button>
+                        <TextBlock x:Name="FitnessDisplay" Text="Fitness: " Margin="5,5,5,5" VerticalAlignment="Center" />
+                    </StackPanel>
+                    
+                </sdk:TabItem>                
+                <sdk:TabItem Header="Optimise">
+                    <StackPanel x:Name="OptimisationButtons" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Vertical">
+                        
+                        <Button Name="OptimiseButton" Margin="5,5,5,5" Width="300" Height="70" Content="Start Optimisation" FontSize="20" Click="OptimiseButton_Click"></Button>
+                        <Button Name="ResetOptimiseButton" Margin="5,5,5,5" Width="300" Height="70" Content="Reset Optimisation" FontSize="20" Click="ResetOptimiseButton_Click"></Button>
+                        <Button Name="SaveCurrentGAButton"  Margin="5,5,5,5" Width="300" Height="70" Content="Save Current GA" FontSize="20" Click="SaveCurrentGAButton_Click"></Button>
+                        <Button Name="LoadPreviousGAButton"  Margin="5,5,5,5" Width="300" Height="70" Content="Load Previous GA" FontSize="20" Click="LoadPreviousGAButton_Click"></Button>
+                        <TextBlock Name="PhaseTextBox" Text="Phase:" Foreground="White"  VerticalAlignment="Center" Width="300"  HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                        <ProgressBar Name="OptimisationProgress" Margin="5,5,5,5" Width="300" Height="20"></ProgressBar>
+
+                        <TextBlock Name="GenerationTextBox" Foreground="White" Text="Generation:" VerticalAlignment="Center" Width="300"  HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                        <TextBlock Name="FitnessTextBox" Foreground="White" Text="Fitness:" VerticalAlignment="Center" Width="300"  HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+
+
+                    </StackPanel>
+                </sdk:TabItem>
+                <sdk:TabItem Header="Settings">
+                    <StackPanel x:Name="SettingsButtons" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Vertical">
+
+                        <TextBlock Text="General" TextDecorations="Underline" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                        <StackPanel x:Name="PaintingComboSet" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock Text="Image Choice:" Foreground="White" Margin="5,5,5,5" VerticalAlignment="Center" />
+                            <ComboBox Name="PaintingSelectionCombo" Margin="5,5,5,5" SelectionChanged="PaintingSelectionComboBox_SelectionChanged" Width="140" SelectedIndex="2">
+                                <ComboBoxItem HorizontalAlignment="Center" Content="Roberto 1" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="Roberto 2" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="Roberto 3" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="Roberto 4" />
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock Text="Slideshow" TextDecorations="Underline" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                        <StackPanel x:Name="SlideComboSet" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock Text="Slide duration:" Foreground="White" Margin="5,5,5,5" VerticalAlignment="Center" />
+                            <ComboBox Name="SlideshowDurationCombo" Margin="5,5,5,5" SelectionChanged="SlideshowDurationComboBox_SelectionChanged" Width="140" SelectedIndex="5">
+                                <ComboBoxItem HorizontalAlignment="Center" Content="1 second" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="2 seconds" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="3 seconds" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="4 seconds" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="5 seconds" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="6 seconds" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="9.6 seconds" />
+                            </ComboBox>
+                        </StackPanel>
+                        
+                        <TextBlock Text="Optimisation" TextDecorations="Underline" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                        <StackPanel x:Name="FitnessPanel" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock Text="Fitness Type:" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                            <ComboBox Name="FitnessComboBox" SelectionChanged="FitnessComboBox_SelectionChanged" Width="150" HorizontalAlignment="Center" SelectedIndex="1"  VerticalAlignment="Center" Margin="5,5,5,5">
+                                <ComboBoxItem HorizontalAlignment="Center" Content="Average distance of all pixels (SLOW)" />
+                                <ComboBoxItem HorizontalAlignment="Center" Content="Average distance of edge pixels" />
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel x:Name="EdgeThicknessPanel" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock Text="Edge Thickness:" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                            <TextBox Name="EdgeThicknessTextBox" Text="1" Width="100" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="5,5,5,5"></TextBox>
+                        </StackPanel>
+                        <StackPanel x:Name="MaxGenPanel" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock Text="Max Generations:" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                            <TextBox Name="MaxGenTextBox" Text="100" Width="100" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="5,5,5,5" TextChanged="MaxGenTextBox_TextChanged"></TextBox>
+                        </StackPanel>
+                        <StackPanel x:Name="PopulationPanel" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock Text="Population Size:" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                            <TextBox Name="PopSizeTextBox" Text="40" Width="100" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="5,5,5,5"></TextBox>
+                        </StackPanel>
+                        <StackPanel x:Name="MutationPanel" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock Text="Mutation Rate:" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                            <TextBox Name="MutationTextBox" Text="0.05" Width="100" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="5,5,5,5"></TextBox>
+                        </StackPanel>
+                        <StackPanel x:Name="CrossoverPanel" HorizontalAlignment="Center"  VerticalAlignment="Center" Orientation="Horizontal">
+                            <TextBlock Text="Crossover Rate:" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="5,5,5,5"></TextBlock>
+                            <TextBox Name="CrossoverTextBox" Text="0.7" Width="100" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="5,5,5,5"></TextBox>
+                        </StackPanel>
+                        <Button Name="ResetDefaultsButton" Margin="5,5,5,5" Width="300" Height="70" Content="Load default settings" FontSize="20" Click="LoadDefaultsButton_Click"></Button>
+
+
+                    </StackPanel>
+                </sdk:TabItem>
+            </sdk:TabControl>
+        </StackPanel>
+    </Viewbox>
+</UserControl>

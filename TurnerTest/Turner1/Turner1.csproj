@@ -1,0 +1,258 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.50727</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{C1A59D42-5A50-4B3C-B763-6BC34C05E7D5}</ProjectGuid>
+    <ProjectTypeGuids>{A1591282-1198-4647-A2B1-27E5FF5F6F3B};{fae04ec0-301f-11d3-bf4b-00c04f79efbc}</ProjectTypeGuids>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Turner1</RootNamespace>
+    <AssemblyName>Turner1</AssemblyName>
+    <TargetFrameworkIdentifier>Silverlight</TargetFrameworkIdentifier>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <SilverlightVersion>$(TargetFrameworkVersion)</SilverlightVersion>
+    <SilverlightApplication>true</SilverlightApplication>
+    <SupportedCultures>
+    </SupportedCultures>
+    <XapOutputs>true</XapOutputs>
+    <GenerateSilverlightManifest>true</GenerateSilverlightManifest>
+    <XapFilename>Turner1.xap</XapFilename>
+    <SilverlightManifestTemplate>Properties\AppManifest.xml</SilverlightManifestTemplate>
+    <SilverlightAppEntry>Turner1.App</SilverlightAppEntry>
+    <TestPageFileName>Turner1TestPage.html</TestPageFileName>
+    <CreateTestPage>true</CreateTestPage>
+    <ValidateXaml>true</ValidateXaml>
+    <EnableOutOfBrowser>false</EnableOutOfBrowser>
+    <OutOfBrowserSettingsFile>Properties\OutOfBrowserSettings.xml</OutOfBrowserSettingsFile>
+    <UsePlatformExtensions>false</UsePlatformExtensions>
+    <ThrowErrorsInValidation>true</ThrowErrorsInValidation>
+    <LinkedServerProject>
+    </LinkedServerProject>
+  </PropertyGroup>
+  <!-- This property group is only here to support building this project using the 
+       MSBuild 3.5 toolset. In order to work correctly with this older toolset, it needs 
+       to set the TargetFrameworkVersion to v3.5 -->
+  <PropertyGroup Condition="'$(MSBuildToolsVersion)' == '3.5'">
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>Bin\Debug</OutputPath>
+    <DefineConstants>DEBUG;TRACE;SILVERLIGHT</DefineConstants>
+    <NoStdLib>true</NoStdLib>
+    <NoConfig>true</NoConfig>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>Bin\Release</OutputPath>
+    <DefineConstants>TRACE;SILVERLIGHT</DefineConstants>
+    <NoStdLib>true</NoStdLib>
+    <NoConfig>true</NoConfig>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="mscorlib" />
+    <Reference Include="System.Windows" />
+    <Reference Include="system" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Net" />
+    <Reference Include="System.Windows.Controls, Version=2.0.5.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Windows.Browser" />
+    <Reference Include="System.Xml.Linq, Version=2.0.5.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Events.cs" />
+    <Compile Include="GeneticAlgorithm.cs" />
+    <Compile Include="ImageHolder.cs" />
+    <Compile Include="Individual.cs" />
+    <Compile Include="PaintingGridEncoding.cs" />
+    <Compile Include="MainPage.xaml.cs">
+      <DependentUpon>MainPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Painting.xaml.cs">
+      <DependentUpon>Painting.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="PaintingEncoding.cs" />
+    <Compile Include="PaintingGrid.xaml.cs">
+      <DependentUpon>PaintingGrid.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Pixel.cs" />
+    <Compile Include="ProcessItem.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </ApplicationDefinition>
+    <Page Include="MainPage.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Painting.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="PaintingGrid.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Images\Thumbs.db" />
+    <None Include="Properties\AppManifest.xml" />
+    <None Include="Thumbs.db" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\flipHorizontal.png" />
+    <Resource Include="Images\flipVertical.png" />
+    <Resource Include="Images\rotate180.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\move.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\Roberto1\10a.png" />
+    <Resource Include="Images\Roberto1\10b.png" />
+    <Resource Include="Images\Roberto1\11a.png" />
+    <Resource Include="Images\Roberto1\11b.png" />
+    <Resource Include="Images\Roberto1\12a.png" />
+    <Resource Include="Images\Roberto1\12b.png" />
+    <Resource Include="Images\Roberto1\1a.png" />
+    <Resource Include="Images\Roberto1\1b.png" />
+    <Resource Include="Images\Roberto1\2a.png" />
+    <Resource Include="Images\Roberto1\2b.png" />
+    <Resource Include="Images\Roberto1\3a.png" />
+    <Resource Include="Images\Roberto1\3b.png" />
+    <Resource Include="Images\Roberto1\4a.png" />
+    <Resource Include="Images\Roberto1\4b.png" />
+    <Resource Include="Images\Roberto1\5a.png" />
+    <Resource Include="Images\Roberto1\5b.png" />
+    <Resource Include="Images\Roberto1\6a.png" />
+    <Resource Include="Images\Roberto1\6b.png" />
+    <Resource Include="Images\Roberto1\7a.png" />
+    <Resource Include="Images\Roberto1\7b.png" />
+    <Resource Include="Images\Roberto1\8a.png" />
+    <Resource Include="Images\Roberto1\8b.png" />
+    <Resource Include="Images\Roberto1\9a.png" />
+    <Resource Include="Images\Roberto1\9b.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\Roberto2\10a.png" />
+    <Resource Include="Images\Roberto2\10b.png" />
+    <Resource Include="Images\Roberto2\11a.png" />
+    <Resource Include="Images\Roberto2\11b.png" />
+    <Resource Include="Images\Roberto2\12a.png" />
+    <Resource Include="Images\Roberto2\12b.png" />
+    <Resource Include="Images\Roberto2\1a.png" />
+    <Resource Include="Images\Roberto2\1b.png" />
+    <Resource Include="Images\Roberto2\2a.png" />
+    <Resource Include="Images\Roberto2\2b.png" />
+    <Resource Include="Images\Roberto2\3a.png" />
+    <Resource Include="Images\Roberto2\3b.png" />
+    <Resource Include="Images\Roberto2\4a.png" />
+    <Resource Include="Images\Roberto2\4b.png" />
+    <Resource Include="Images\Roberto2\5a.png" />
+    <Resource Include="Images\Roberto2\5b.png" />
+    <Resource Include="Images\Roberto2\6a.png" />
+    <Resource Include="Images\Roberto2\6b.png" />
+    <Resource Include="Images\Roberto2\7a.png" />
+    <Resource Include="Images\Roberto2\7b.png" />
+    <Resource Include="Images\Roberto2\8a.png" />
+    <Resource Include="Images\Roberto2\8b.png" />
+    <Resource Include="Images\Roberto2\9a.png" />
+    <Resource Include="Images\Roberto2\9b.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\Roberto3\10a.png" />
+    <Resource Include="Images\Roberto3\10b.png" />
+    <Resource Include="Images\Roberto3\11a.png" />
+    <Resource Include="Images\Roberto3\11b.png" />
+    <Resource Include="Images\Roberto3\12a.png" />
+    <Resource Include="Images\Roberto3\12b.png" />
+    <Resource Include="Images\Roberto3\1a.png" />
+    <Resource Include="Images\Roberto3\1b.png" />
+    <Resource Include="Images\Roberto3\2a.png" />
+    <Resource Include="Images\Roberto3\2b.png" />
+    <Resource Include="Images\Roberto3\3a.png" />
+    <Resource Include="Images\Roberto3\3b.png" />
+    <Resource Include="Images\Roberto3\4a.png" />
+    <Resource Include="Images\Roberto3\4b.png" />
+    <Resource Include="Images\Roberto3\5a.png" />
+    <Resource Include="Images\Roberto3\5b.png" />
+    <Resource Include="Images\Roberto3\6a.png" />
+    <Resource Include="Images\Roberto3\6b.png" />
+    <Resource Include="Images\Roberto3\7a.png" />
+    <Resource Include="Images\Roberto3\7b.png" />
+    <Resource Include="Images\Roberto3\8a.png" />
+    <Resource Include="Images\Roberto3\8b.png" />
+    <Resource Include="Images\Roberto3\9a.png" />
+    <Resource Include="Images\Roberto3\9b.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Images\Roberto4\10a.png" />
+    <Resource Include="Images\Roberto4\10b.png" />
+    <Resource Include="Images\Roberto4\11a.png" />
+    <Resource Include="Images\Roberto4\11b.png" />
+    <Resource Include="Images\Roberto4\12a.png" />
+    <Resource Include="Images\Roberto4\12b.png" />
+    <Resource Include="Images\Roberto4\1a.png" />
+    <Resource Include="Images\Roberto4\1b.png" />
+    <Resource Include="Images\Roberto4\2a.png" />
+    <Resource Include="Images\Roberto4\2b.png" />
+    <Resource Include="Images\Roberto4\3a.png" />
+    <Resource Include="Images\Roberto4\3b.png" />
+    <Resource Include="Images\Roberto4\4a.png" />
+    <Resource Include="Images\Roberto4\4b.png" />
+    <Resource Include="Images\Roberto4\5a.png" />
+    <Resource Include="Images\Roberto4\5b.png" />
+    <Resource Include="Images\Roberto4\6a.png" />
+    <Resource Include="Images\Roberto4\6b.png" />
+    <Resource Include="Images\Roberto4\7a.png" />
+    <Resource Include="Images\Roberto4\7b.png" />
+    <Resource Include="Images\Roberto4\8a.png" />
+    <Resource Include="Images\Roberto4\8b.png" />
+    <Resource Include="Images\Roberto4\9a.png" />
+    <Resource Include="Images\Roberto4\9b.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Sounds\Roberto3\10b.mp3" />
+    <Resource Include="Sounds\Roberto3\12b.mp3" />
+    <Resource Include="Sounds\Roberto3\1b.mp3" />
+    <Resource Include="Sounds\Roberto3\3b.mp3" />
+    <Resource Include="Sounds\Roberto3\6b.mp3" />
+    <Resource Include="Sounds\Roberto3\7b.mp3" />
+    <Resource Include="Sounds\Roberto3\background.mp3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Sounds\Roberto3\11b.mp3" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\Silverlight\$(SilverlightVersion)\Microsoft.Silverlight.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+  <ProjectExtensions>
+    <VisualStudio>
+      <FlavorProperties GUID="{A1591282-1198-4647-A2B1-27E5FF5F6F3B}">
+        <SilverlightProjectProperties />
+      </FlavorProperties>
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>
