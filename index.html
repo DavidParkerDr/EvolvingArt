@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Evolving Art</title>
   <meta name="description" content="An evolving musical painting on the boundary between permanence and change — twelve double-sided panels, rearranged endlessly by chance and by evolution.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 4 3%22%3E%3Crect width=%222%22 height=%221.5%22 fill=%22%23d9b56c%22/%3E%3Crect x=%222%22 width=%222%22 height=%221.5%22 fill=%22%2340c8c0%22/%3E%3Crect y=%221.5%22 width=%222%22 height=%221.5%22 fill=%22%23e8669a%22/%3E%3Crect x=%222%22 y=%221.5%22 width=%222%22 height=%221.5%22 fill=%22%23f2e15b%22/%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/style.css">
   <script type="module" src="js/app.js"></script>
 </head>
@@ -43,7 +44,7 @@
     </nav>
 
     <section id="tab-explore" role="tabpanel" aria-labelledby="t-explore">
-      <p class="hint">Hover over (or tap) a panel to turn it over, turn it upside down, or move it to another slot.</p>
+      <p class="hint">Hover over (or tap) a panel to turn it over, turn it round, or move it to another slot.</p>
       <div class="button-stack">
         <button id="randomise" class="primary">Randomise</button>
         <button id="slideshow" aria-pressed="false">Start random slideshow</button>
@@ -92,15 +93,15 @@
 
     <section id="tab-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
       <h2>General</h2>
-      <label class="field">
+      <label class="field stacked">
         <span>Painting set</span>
-        <select id="set-choice">
-          <option value="1">Roberto 1</option>
-          <option value="2">Roberto 2</option>
-          <option value="3" selected>Roberto 3 (with music)</option>
-          <option value="4">Roberto 4</option>
-        </select>
+        <select id="set-choice"></select>
       </label>
+      <label class="field">
+        <span>Pieces per panel</span>
+        <select id="multiplier"></select>
+      </label>
+      <p class="hint small-hint">Cut each panel into a grid of smaller pieces. Square pieces can be turned a quarter turn at a time; rectangular ones only upside down.</p>
       <h2>Slideshow</h2>
       <label class="field">
         <span>Slide duration</span>
@@ -147,7 +148,7 @@
 
     <section id="tab-about" role="tabpanel" aria-labelledby="t-about" hidden>
       <h2>An evolving musical painting</h2>
-      <p>Works of art are usually fixed in time by the artist. Here the artwork is a landscape of possibilities: twelve double-sided panels that can be turned over, turned upside down and rearranged into a vast number of compositions. Each visit is a different journey through it.</p>
+      <p>Works of art are usually fixed in time by the artist. Here the artwork is a landscape of possibilities: twelve double-sided panels, rectangular or square, that can be turned over, turned round and rearranged into a vast number of compositions. Each visit is a different journey through it.</p>
       <p>Journeys can be random, or evolutionary: a genetic algorithm searches for arrangements where colour and pattern flow across the edges between panels.</p>
       <h2>Credits</h2>
       <dl class="credits">

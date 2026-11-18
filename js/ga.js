@@ -1,162 +1,205 @@
 // Evolving Art — genetic algorithm and fitness.
-// A port of the original Silverlight C# (GeneticAlgorithm.cs, Individual.cs,
-// PaintingGridEncoding.cs, PaintingEncoding.cs, ImageHolder.cs, Pixel.cs).
+// A port of the original Silverlight C# (GeneticAlgorithm.cs, Individual.cs, PaintingGridEncoding.cs,
+// PaintingEncoding.cs, ImageHolder.cs), merging the rectangular-panel version (TurnerTest) and the
+// square-panel version (TurnerTestSquare) into one engine. Panels may be rectangular or square: square
+// panels can be turned a quarter turn at a time (0/90/180/270°), rectangular ones only half a turn
+// (0/180°), so they still fit the grid. Panels are always whole, as in the physical work.
 //
-// This module has no browser dependencies, so it can also run in Node or a Web Worker.
+// This module has no browser dependencies, so it also runs in Node or a Web Worker.
 // Image data is supplied as objects shaped like ImageData: { width, height, data: RGBA bytes }.
 
-export const ROWS = 3;
-export const COLUMNS = 4;
-export const NUMBER_OF_PAINTINGS = ROWS * COLUMNS;
+export const PANEL_ROWS = 3;
+export const PANEL_COLUMNS = 4;
+export const NUMBER_OF_PANELS = PANEL_ROWS * PANEL_COLUMNS;
 
 let random = Math.random;
 /** Replace the random number source (e.g. with a seeded generator for testing). */
 export function setRandom(fn) { random = fn; }
 const nextInt = (n) => Math.floor(random() * n);
 const flipCoin = () => random() < 0.5;
+const pick = (arr) => arr[nextInt(arr.length)];
 
 // ---------------------------------------------------------------------------
 // Encodings
 // ---------------------------------------------------------------------------
 
-/** One panel in one slot: which painting, upside-down or not, which face showing. */
+/** One panel in one slot: which panel, how far it is turned (degrees clockwise), which face is showing. */
 export class PaintingEncoding {
-  constructor(paintingIndex, rotated, frontVisible) {
+  constructor(paintingIndex, rotation, frontVisible) {
     this.paintingIndex = paintingIndex;
-    this.rotated = rotated;
+    this.rotation = rotation;
     this.frontVisible = frontVisible;
   }
-  clone() { return new PaintingEncoding(this.paintingIndex, this.rotated, this.frontVisible); }
-  mutate(rate) {
-    if (random() < rate && flipCoin()) this.rotated = !this.rotated;
+  clone() { return new PaintingEncoding(this.paintingIndex, this.rotation, this.frontVisible); }
+
+  /** With probability `rate`, choose a new allowed rotation at random; likewise (with a coin toss) turn over. */
+  mutate(rate, rotations) {
+    if (random() < rate) this.rotation = pick(rotations);
     if (random() < rate && flipCoin()) this.frontVisible = !this.frontVisible;
   }
 }
 
-/** A whole arrangement: 12 PaintingEncodings in row-major slot order. */
+/** A whole arrangement: one PaintingEncoding per slot, in row-major order. */
 export class GridEncoding {
   constructor(encodings = []) { this.encodings = encodings; }
 
-  static random() {
-    const unplaced = [...Array(NUMBER_OF_PAINTINGS).keys()];
+  get length() { return this.encodings.length; }
+
+  static random(count, rotations) {
+    const unplaced = [...Array(count).keys()];
     const encodings = [];
     while (unplaced.length > 0) {
-      const paintingIndex = unplaced.splice(nextInt(unplaced.length), 1)[0];
-      const rotated = !flipCoin();
-      const frontVisible = !flipCoin();
-      encodings.push(new PaintingEncoding(paintingIndex, rotated, frontVisible));
+      const i = nextInt(unplaced.length);
+      const paintingIndex = unplaced[i];
+      unplaced[i] = unplaced[unplaced.length - 1];
+      unplaced.pop();
+      encodings.push(new PaintingEncoding(paintingIndex, pick(rotations), flipCoin()));
     }
     return new GridEncoding(encodings);
   }
 
   clone() { return new GridEncoding(this.encodings.map((e) => e.clone())); }
   at(i) { return this.encodings[i]; }
-  find(paintingIndex) { return this.encodings.find((e) => e.paintingIndex === paintingIndex); }
 
-  /** Swap-based mutation: with probability `rate` per slot, swap with a random painting
-   *  and possibly toggle its rotation/face. */
-  mutate(rate) {
+  /** Map from painting index to its encoding. */
+  byPainting() {
+    const map = new Array(this.encodings.length);
+    for (const e of this.encodings) map[e.paintingIndex] = e;
+    return map;
+  }
+
+  /** Swap-based mutation: with probability `rate` per slot, swap with a random panel and
+   *  possibly change its rotation/face. */
+  mutate(rate, rotations) {
+    const n = this.encodings.length;
+    const where = this.byPainting();
     for (const enc of this.encodings) {
       if (random() < rate) {
-        const newIndex = nextInt(NUMBER_OF_PAINTINGS);
-        const swap = this.find(newIndex);
+        const newIndex = nextInt(n);
+        const swap = where[newIndex];
         swap.paintingIndex = enc.paintingIndex;
         enc.paintingIndex = newIndex;
-        enc.mutate(rate);
+        where[swap.paintingIndex] = swap;
+        where[newIndex] = enc;
+        enc.mutate(rate, rotations);
       }
     }
   }
 
-  /** "Order crossover (modified)": half the slots are inherited directly from one parent;
-   *  the rest are filled from the other parent where that doesn't duplicate a painting,
-   *  and any conflicts are filled at random from the unused paintings. */
+  /** "Order crossover (modified)", as in the rectangular version: half the slots are inherited
+   *  directly from one parent; the rest are taken from the other parent where that doesn't
+   *  duplicate a panel, and any conflicts are filled at random from the unused panels.
+   *  (The square version's rewrite of this function copied each parent unchanged — see README.) */
   crossover(other) {
-    const crossoverPoints = [...Array(NUMBER_OF_PAINTINGS).keys()];
-    const remaining1 = [];
-    const remaining2 = [];
-    const free1 = other.encodings.map((e) => e.clone());
-    const free2 = this.encodings.map((e) => e.clone());
-    while (crossoverPoints.length > NUMBER_OF_PAINTINGS / 2) {
-      const [p] = crossoverPoints.splice(nextInt(crossoverPoints.length), 1);
-      remaining1.push(p);
-      remaining2.push(p);
+    const n = this.encodings.length;
+    // Half the slots, chosen at random, are crossover points (inherited directly); the rest are "remaining".
+    const crossoverPoints = [...Array(n).keys()];
+    const remaining = [];
+    while (crossoverPoints.length > n / 2) {
+      const i = nextInt(crossoverPoints.length);
+      remaining.push(crossoverPoints[i]);
+      crossoverPoints.splice(i, 1);
     }
-    const child1 = this.#childFromCrossover(other, true, crossoverPoints, remaining1, free1);
-    const child2 = this.#childFromCrossover(other, false, crossoverPoints, remaining2, free2);
+    const child1 = this.#child(this, other, crossoverPoints, remaining);
+    const child2 = this.#child(other, this, crossoverPoints, remaining);
     child1.#crossoverFlags(this, other);
     child2.#crossoverFlags(this, other);
     return [child1, child2];
   }
 
-  #childFromCrossover(other, useThis, crossoverPoints, remainingPoints, freeEncodings) {
-    const source = useThis ? this : other;
-    const otherSource = useThis ? other : this;
-    const slots = new Array(NUMBER_OF_PAINTINGS);
-
+  #child(source, otherSource, crossoverPoints, remainingPoints) {
+    const n = source.encodings.length;
+    const slots = new Array(n);
+    // panels still free, keyed by painting index; their flags come from otherSource
+    const free = new Map(otherSource.encodings.map((e) => [e.paintingIndex, e]));
     for (const i of crossoverPoints) {
-      const enc = source.at(i).clone();
-      slots[i] = enc;
-      const j = freeEncodings.findIndex((f) => f.paintingIndex === enc.paintingIndex);
-      if (j >= 0) freeEncodings.splice(j, 1);
+      const enc = source.at(i);
+      slots[i] = enc.clone();
+      free.delete(enc.paintingIndex);
     }
-    for (let i = 0; i < remainingPoints.length;) {
-      const slot = remainingPoints[i];
+    const unfilled = [];
+    for (const slot of remainingPoints) {
       const wanted = otherSource.at(slot).paintingIndex;
-      const j = freeEncodings.findIndex((f) => f.paintingIndex === wanted);
-      if (j >= 0) {
-        slots[slot] = freeEncodings[j];
-        freeEncodings.splice(j, 1);
-        remainingPoints.splice(i, 1);
+      if (free.has(wanted)) {
+        slots[slot] = free.get(wanted).clone();
+        free.delete(wanted);
       } else {
-        i++;
+        unfilled.push(slot);
       }
     }
-    for (const slot of remainingPoints) {
-      slots[slot] = freeEncodings.splice(nextInt(freeEncodings.length), 1)[0];
+    const leftovers = [...free.values()];
+    for (const slot of unfilled) {
+      const i = nextInt(leftovers.length);
+      slots[slot] = leftovers[i].clone();
+      leftovers[i] = leftovers[leftovers.length - 1];
+      leftovers.pop();
     }
-    return new GridEncoding(slots.map((e) => e.clone()));
+    return new GridEncoding(slots);
   }
 
   #crossoverFlags(parent1, parent2) {
+    const p1 = parent1.byPainting();
+    const p2 = parent2.byPainting();
     for (const enc of this.encodings) {
-      enc.rotated = (flipCoin() ? parent1 : parent2).find(enc.paintingIndex).rotated;
-      enc.frontVisible = (flipCoin() ? parent1 : parent2).find(enc.paintingIndex).frontVisible;
+      enc.rotation = (flipCoin() ? p1 : p2)[enc.paintingIndex].rotation;
+      enc.frontVisible = (flipCoin() ? p1 : p2)[enc.paintingIndex].frontVisible;
     }
+  }
+
+  isValid(count) {
+    if (this.encodings.length !== count) return false;
+    const seen = new Uint8Array(count);
+    for (const e of this.encodings) {
+      if (!(e.paintingIndex >= 0 && e.paintingIndex < count) || seen[e.paintingIndex]) return false;
+      seen[e.paintingIndex] = 1;
+    }
+    return true;
+  }
+
+  /** Force every rotation into the allowed set (e.g. a square-set arrangement loaded for rectangles). */
+  constrainRotations(rotations) {
+    for (const e of this.encodings) {
+      if (!rotations.includes(e.rotation)) e.rotation = e.rotation >= 180 ? 180 : 0;
+    }
+    return this;
   }
 
   // --- Serialisation -------------------------------------------------------
   toJSON() {
-    return this.encodings.map((e) => ({ painting: e.paintingIndex, rotated: e.rotated, front: e.frontVisible }));
+    return this.encodings.map((e) => ({ painting: e.paintingIndex, rotation: e.rotation, front: e.frontVisible }));
   }
   static fromJSON(arr) {
-    return new GridEncoding(arr.map((o) => new PaintingEncoding(o.painting, o.rotated, o.front)));
+    return new GridEncoding(arr.map((o) => new PaintingEncoding(
+      o.painting,
+      typeof o.rotation === 'number' ? normaliseAngle(o.rotation) : (o.rotated ? 180 : 0),
+      o.front,
+    )));
   }
-  /** Compact form for URLs, e.g. "4a,7bR,..." (1-based painting number, face a/b, R = upside down). */
+  /** Compact form for URLs, e.g. "4a,7bR,2aR90,..." (1-based panel number, face a/b,
+   *  R = upside down, R90 / R270 = quarter turns clockwise). */
   toToken() {
-    return this.encodings.map((e) => `${e.paintingIndex + 1}${e.frontVisible ? 'a' : 'b'}${e.rotated ? 'R' : ''}`).join(',');
+    const suffix = { 0: '', 90: 'R90', 180: 'R', 270: 'R270' };
+    return this.encodings.map((e) => `${e.paintingIndex + 1}${e.frontVisible ? 'a' : 'b'}${suffix[e.rotation]}`).join(',');
   }
   static fromToken(token) {
-    const parts = token.split(',');
-    if (parts.length !== NUMBER_OF_PAINTINGS) throw new Error('Wrong number of panels');
-    const enc = parts.map((p) => {
-      const m = /^(\d{1,2})([ab])(R?)$/.exec(p);
+    return new GridEncoding(token.split(',').map((p) => {
+      const m = /^(\d{1,2})([ab])(R(?:90|180|270)?)?$/.exec(p);
       if (!m) throw new Error(`Bad panel token "${p}"`);
-      return new PaintingEncoding(+m[1] - 1, m[3] === 'R', m[2] === 'a');
-    });
-    const seen = new Set(enc.map((e) => e.paintingIndex));
-    if (seen.size !== NUMBER_OF_PAINTINGS || [...seen].some((i) => i < 0 || i >= NUMBER_OF_PAINTINGS)) {
-      throw new Error('Each painting must appear exactly once');
-    }
-    return new GridEncoding(enc);
+      const rotation = !m[3] ? 0 : m[3] === 'R' ? 180 : Number(m[3].slice(1));
+      return new PaintingEncoding(+m[1] - 1, rotation, m[2] === 'a');
+    }));
   }
 }
+
+export const normaliseAngle = (a) => ((Math.round(a / 90) * 90) % 360 + 360) % 360;
 
 // ---------------------------------------------------------------------------
 // Image analysis (replaces ImageHolder / WriteableBitmap pixel access)
 // ---------------------------------------------------------------------------
 
-/** Average `thickness` pixels inward from an edge, one value per position along that edge.
- *  Returns an Int32Array of [a,r,g,b, a,r,g,b, ...] with C#-style integer averaging. */
+/** Average `thickness` pixels inward from an edge, one value per position along that edge
+ *  (top→bottom for left/right, left→right for top/bottom). Returns Int32Array [a,r,g,b, ...]
+ *  with C#-style integer averaging. */
 function edgeStrip(img, edge, thickness) {
   const { width: w, height: h, data } = img;
   const len = edge === 'left' || edge === 'right' ? h : w;
@@ -187,6 +230,9 @@ function reversed(strip) {
   return out;
 }
 
+/** The edges of a panel after turning it a further 90° clockwise (matches ImageHolder in the square version). */
+const quarterTurn = (e) => ({ left: e.bottom, right: e.top, top: reversed(e.left), bottom: reversed(e.right) });
+
 function averagePixel(img) {
   const { data } = img;
   const n = data.length / 4;
@@ -196,31 +242,39 @@ function averagePixel(img) {
 }
 
 /**
- * Pre-computed per-panel data used by the fitness functions.
- * `faces[i] = { front: ImageData, back: ImageData }` for i = 0..11.
+ * The 12 panels of one painting set, ready for the fitness functions.
+ * `panels[i] = { front: ImageData, back: ImageData }`. Panels whose images are square can be turned in quarter turns.
  */
 export class PaintingSet {
-  constructor(faces) {
-    this.faces = faces;
-    this.edgeCache = new Map(); // thickness -> edges[painting][face][rotated] = {left,right,top,bottom}
-    this.averages = faces.map((f) => ({ front: averagePixel(f.front), back: averagePixel(f.back) }));
+  constructor(panels) {
+    const { width: W, height: H } = panels[0].front;
+    this.rows = PANEL_ROWS;
+    this.columns = PANEL_COLUMNS;
+    this.count = NUMBER_OF_PANELS;
+    this.panelWidth = W;
+    this.panelHeight = H;
+    this.square = W === H;
+    this.rotations = this.square ? [0, 90, 180, 270] : [0, 180];
+    this.panels = panels;
+    this.averages = panels.map((p) => ({ front: averagePixel(p.front), back: averagePixel(p.back) }));
+    this.edgeCache = new Map();
   }
 
+  /** edges(t)[panel][face][rotation/90] = { left, right, top, bottom } */
   edges(thickness) {
     if (!this.edgeCache.has(thickness)) {
-      this.edgeCache.set(thickness, this.faces.map((f) => {
+      this.edgeCache.set(thickness, this.panels.map((p) => {
         const forFace = (img) => {
           const t = Math.max(1, Math.min(thickness, img.width, img.height));
-          const left = edgeStrip(img, 'left', t), right = edgeStrip(img, 'right', t);
-          const top = edgeStrip(img, 'top', t), bottom = edgeStrip(img, 'bottom', t);
-          return {
-            upright: { left, right, top, bottom },
-            // Turned 180°: each edge becomes the opposite edge, read in reverse.
-            rotated: { left: reversed(right), right: reversed(left), top: reversed(bottom), bottom: reversed(top) },
+          const upright = {
+            left: edgeStrip(img, 'left', t), right: edgeStrip(img, 'right', t),
+            top: edgeStrip(img, 'top', t), bottom: edgeStrip(img, 'bottom', t),
           };
+          const r90 = quarterTurn(upright);
+          const r180 = quarterTurn(r90);
+          return [upright, r90, r180, quarterTurn(r180)];
         };
-        // Both faces are analysed — the original loaded the front image for the back too.
-        return { front: forFace(f.front), back: forFace(f.back) };
+        return { front: forFace(p.front), back: forFace(p.back) };
       }));
     }
     return this.edgeCache.get(thickness);
@@ -247,31 +301,32 @@ function pixelDistance(p, q) {
  * type 1 = matching edge pixels (default), type 0 = whole-panel average colours.
  */
 export function fitness(grid, set, { type = 1, edgeThickness = 1 } = {}) {
+  const { rows, columns } = set;
   let sum = 0, count = 0;
   if (type === 0) {
     const avg = (e) => set.averages[e.paintingIndex][e.frontVisible ? 'front' : 'back'];
-    for (let row = 0; row < ROWS; row++) {
-      for (let col = 0; col < COLUMNS; col++) {
-        const i = row * COLUMNS + col;
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < columns; col++) {
+        const i = row * columns + col;
         const here = avg(grid.at(i));
-        if (col < COLUMNS - 1) { sum += pixelDistance(here, avg(grid.at(i + 1))); count++; }
-        if (row < ROWS - 1) { sum += pixelDistance(here, avg(grid.at(i + COLUMNS))); count++; }
+        if (col < columns - 1) { sum += pixelDistance(here, avg(grid.at(i + 1))); count++; }
+        if (row < rows - 1) { sum += pixelDistance(here, avg(grid.at(i + columns))); count++; }
       }
     }
     return sum / count;
   }
   const edges = set.edges(edgeThickness);
-  const edgeOf = (e) => edges[e.paintingIndex][e.frontVisible ? 'front' : 'back'][e.rotated ? 'rotated' : 'upright'];
-  for (let row = 0; row < ROWS; row++) {
-    for (let col = 0; col < COLUMNS; col++) {
-      const i = row * COLUMNS + col;
+  const edgeOf = (e) => edges[e.paintingIndex][e.frontVisible ? 'front' : 'back'][e.rotation / 90];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < columns; col++) {
+      const i = row * columns + col;
       const here = edgeOf(grid.at(i));
-      if (col < COLUMNS - 1) {
+      if (col < columns - 1) {
         const d = stripDistance(here.right, edgeOf(grid.at(i + 1)).left);
         sum += d.sum; count += d.count;
       }
-      if (row < ROWS - 1) {
-        const d = stripDistance(here.bottom, edgeOf(grid.at(i + COLUMNS)).top);
+      if (row < rows - 1) {
+        const d = stripDistance(here.bottom, edgeOf(grid.at(i + columns)).top);
         sum += d.sum; count += d.count;
       }
     }
@@ -325,17 +380,17 @@ export class GeneticAlgorithm {
   get finished() { return this.generation >= this.settings.maxGenerations; }
 
   initialise() {
-    while (this.population.length < this.settings.populationSize) {
-      this.population.push(this.evaluate(GridEncoding.random()));
+    const size = Math.max(2, this.settings.populationSize);
+    while (this.population.length < size) {
+      this.population.push(this.evaluate(GridEncoding.random(this.set.count, this.set.rotations)));
     }
     this.sort();
     this.crop();
   }
 
   crop() {
-    if (this.population.length > this.settings.populationSize) {
-      this.population.length = this.settings.populationSize;
-    }
+    const size = Math.max(2, this.settings.populationSize);
+    if (this.population.length > size) this.population.length = size;
   }
 
   /** Rank-biased selection favouring the fittest (index = (U·√N)²). */
@@ -347,9 +402,10 @@ export class GeneticAlgorithm {
 
   /** One generation: breed a full set of children, merge with parents, keep the best N. */
   step() {
-    if (this.population.length < this.settings.populationSize) this.initialise();
+    if (this.population.length < Math.max(2, this.settings.populationSize)) this.initialise();
     this.generation++;
     this.sort();
+    const { rotations } = this.set;
     const children = [];
     while (children.length < this.settings.populationSize) {
       const p1 = this.selectParent();
@@ -359,7 +415,7 @@ export class GeneticAlgorithm {
         ? p1.encoding.crossover(p2.encoding)
         : [p1.encoding.clone(), p2.encoding.clone()];
       for (const kid of kids) {
-        kid.mutate(this.settings.mutationRate);
+        kid.mutate(this.settings.mutationRate, rotations);
         children.push(this.evaluate(kid));
       }
     }
@@ -380,7 +436,7 @@ export class GeneticAlgorithm {
   static fromJSON(set, obj) {
     const ga = new GeneticAlgorithm(set, obj.settings);
     ga.generation = obj.generation | 0;
-    ga.population = obj.population.map((p) => ga.evaluate(GridEncoding.fromJSON(p.grid)));
+    ga.population = obj.population.map((p) => ga.evaluate(GridEncoding.fromJSON(p.grid).constrainRotations(set.rotations)));
     ga.sort();
     return ga;
   }

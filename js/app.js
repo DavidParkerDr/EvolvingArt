@@ -1,23 +1,18 @@
 // Evolving Art — browser front end.
-// Replaces MainPage, PaintingGrid and Painting (XAML + code-behind) from the Silverlight version.
+// Replaces MainPage, PaintingGrid and Painting (XAML + code-behind) from both Silverlight versions.
 
 import {
-  ROWS, COLUMNS, NUMBER_OF_PAINTINGS, DEFAULT_SETTINGS,
-  PaintingEncoding, GridEncoding, PaintingSet, GeneticAlgorithm, fitness,
+  PANEL_ROWS, PANEL_COLUMNS, NUMBER_OF_PANELS, DEFAULT_SETTINGS,
+  PaintingEncoding, GridEncoding, PaintingSet, GeneticAlgorithm, fitness, normaliseAngle,
 } from './ga.js';
+import { PAINTING_SETS, DEFAULT_SET, findSet, normaliseSetId } from './sets.js';
 
-// Assets stay where they were in the original Visual Studio project.
-const ASSET_ROOT = 'TurnerTest/Turner1/';
-const imageUrl = (set, n, face) => `${ASSET_ROOT}Images/Roberto${set}/${n}${face}.png`;
-const soundUrl = (set, name) => `${ASSET_ROOT}Sounds/Roberto${set}/${name}.mp3`;
-
-// Only Roberto 3 has music: a long background track plus loops for some panel backs.
-const SOUND_MANIFEST = {
-  3: { background: 'background', faces: new Set(['1b', '3b', '6b', '7b', '10b', '11b', '12b']) },
-};
-
+const MAX_MULTIPLIER = 10;
 const SLIDESHOW_DEFAULT = 6;
 const STORAGE_KEY = 'evolvingArt.settings.v1';
+
+const imageUrl = (set, panel, face) => `${set.images}/${panel}${face}.png`;
+const soundUrl = (set, name) => `${set.sounds.folder}/${name}.mp3`;
 
 const $ = (id) => document.getElementById(id);
 const body = document.body;
@@ -27,12 +22,17 @@ const body = document.body;
 // ---------------------------------------------------------------------------
 
 const settings = {
-  set: 3,
+  set: DEFAULT_SET,
+  multiplier: 1,
   slideSeconds: SLIDESHOW_DEFAULT,
   pace: 'slide',
   ...DEFAULT_SETTINGS,
 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); } catch { /* storage unavailable */ }
+settings.set = normaliseSetId(settings.set) || DEFAULT_SET;
+settings.multiplier = clampMultiplier(settings.multiplier);
+
+function clampMultiplier(m) { return Math.min(MAX_MULTIPLIER, Math.max(1, parseInt(m, 10) || 1)); }
 function persistSettings() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
 }
@@ -54,9 +54,9 @@ class SoundEngine {
     this.enabled = true;
     this.ctx = null;
     this.buffers = new Map();       // url -> Promise<AudioBuffer|null>
-    this.voices = new Map();        // paintingIndex -> { key, source, gain }
-    this.manifest = null;
+    this.voices = new Map();        // face key (e.g. "6b") -> { source, gain }
     this.set = null;
+    this.faces = new Set();
     this.background = new Audio();
     this.background.loop = true;
     this.background.preload = 'none';
@@ -69,6 +69,7 @@ class SoundEngine {
       if (!Ctx) return;
       this.ctx = new Ctx();
       this.master = this.ctx.createGain();
+      this.master.gain.value = this.enabled ? 1 : 0;
       this.master.connect(this.ctx.destination);
       this.epoch = this.ctx.currentTime;
     }
@@ -78,13 +79,10 @@ class SoundEngine {
   useSet(set) {
     this.stopAllVoices();
     this.set = set;
-    this.manifest = SOUND_MANIFEST[set] || null;
+    this.faces = new Set(set.sounds?.faces || []);
     this.background.pause();
-    if (this.manifest?.background) {
-      this.background.src = soundUrl(set, this.manifest.background);
-    } else {
-      this.background.removeAttribute('src');
-    }
+    if (set.sounds?.background) this.background.src = soundUrl(set, set.sounds.background);
+    else this.background.removeAttribute('src');
     this.background.load();
     this.syncBackground();
   }
@@ -98,7 +96,7 @@ class SoundEngine {
   setBackground(on) { this.wantBackground = on; this.syncBackground(); }
 
   syncBackground() {
-    const play = this.enabled && this.wantBackground && !!this.manifest?.background && this.ctx;
+    const play = this.enabled && this.wantBackground && !!this.set?.sounds?.background && this.ctx;
     if (play && this.background.paused) this.background.play().catch(() => {});
     else if (!play && !this.background.paused) this.background.pause();
   }
@@ -113,25 +111,20 @@ class SoundEngine {
     return this.buffers.get(url);
   }
 
-  /** Each visible face that has a loop plays it; loops are phase-aligned so they stay in step. */
-  update(panels) {
+  /** A panel face's loop plays while any piece of that face is showing. Loops are phase-aligned. */
+  update(visibleFaces) {
     if (!this.ctx) return;
-    for (const p of panels) {
-      const key = `${p.index + 1}${p.front ? 'a' : 'b'}`;
-      const wanted = this.manifest?.faces.has(key) ? key : null;
-      const current = this.voices.get(p.index);
-      if ((current?.key ?? null) === wanted) continue;
-      if (current) this.#stopVoice(p.index);
-      if (wanted) this.#startVoice(p.index, wanted);
-    }
+    const wanted = new Set([...visibleFaces].filter((k) => this.faces.has(k)));
+    for (const key of [...this.voices.keys()]) if (!wanted.has(key)) this.#stopVoice(key);
+    for (const key of wanted) if (!this.voices.has(key)) this.#startVoice(key);
   }
 
-  async #startVoice(index, key) {
+  async #startVoice(key) {
     const set = this.set;
-    const voice = { key, source: null, gain: null };
-    this.voices.set(index, voice);
+    const voice = { source: null, gain: null };
+    this.voices.set(key, voice);
     const buffer = await this.#buffer(soundUrl(set, key));
-    if (!buffer || this.voices.get(index) !== voice || this.set !== set) return;
+    if (!buffer || this.voices.get(key) !== voice || this.set !== set) return;
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
@@ -145,9 +138,9 @@ class SoundEngine {
     voice.gain = gain;
   }
 
-  #stopVoice(index) {
-    const voice = this.voices.get(index);
-    this.voices.delete(index);
+  #stopVoice(key) {
+    const voice = this.voices.get(key);
+    this.voices.delete(key);
     if (!voice?.source) return;
     const now = this.ctx.currentTime;
     voice.gain.gain.cancelScheduledValues(now);
@@ -156,13 +149,13 @@ class SoundEngine {
     voice.source.stop(now + 0.45);
   }
 
-  stopAllVoices() { for (const i of [...this.voices.keys()]) this.#stopVoice(i); }
+  stopAllVoices() { for (const k of [...this.voices.keys()]) this.#stopVoice(k); }
 }
 
 const sound = new SoundEngine();
 
 // ---------------------------------------------------------------------------
-// Panels
+// Pieces
 // ---------------------------------------------------------------------------
 
 const ICONS = {
@@ -172,70 +165,72 @@ const ICONS = {
   move: '<svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg>',
 };
 
-class Panel {
-  constructor(index) {
+const mod360 = (a) => ((a % 360) + 360) % 360;
+
+/** One piece of a panel (the whole panel when pieces-per-panel is 1). */
+class Piece {
+  constructor(index, m) {
     this.index = index;
-    // Cumulative rotation angles (degrees) of the card: rotateZ(z) rotateX(x) rotateY(y).
-    // Turning over sideways adds 180 to y, top-to-bottom adds 180 to x, upside down adds 180 to z.
+    this.panel = Math.floor(index / (m * m));           // 0..11
+    const cell = index % (m * m);
+    this.cellRow = Math.floor(cell / m);
+    this.cellColumn = cell % m;
+    // Cumulative card angles (degrees): rotateZ(z) rotateX(x) rotateY(y).
+    // Turning over sideways adds 180 to y; top-to-bottom adds 180 to x; turning adds 90 or 180 to z.
     this.angles = { x: 0, y: 0, z: 0 };
     this.slot = index;
 
     this.el = document.createElement('div');
     this.el.className = 'piece';
+    this.el.tabIndex = 0;
     this.el.setAttribute('role', 'gridcell');
     this.card = document.createElement('div');
     this.card.className = 'card';
-    this.frontImg = Object.assign(document.createElement('img'), { className: 'face front', alt: '', draggable: false });
-    this.backImg = Object.assign(document.createElement('img'), { className: 'face back', alt: '', draggable: false });
-    this.card.append(this.frontImg, this.backImg);
-
-    const controls = document.createElement('div');
-    controls.className = 'controls';
-    const button = (cls, label, icon, action) => {
-      const b = document.createElement('button');
-      b.className = cls;
-      b.type = 'button';
-      b.title = label;
-      b.setAttribute('aria-label', label);
-      b.innerHTML = icon;
-      b.addEventListener('click', (e) => { e.stopPropagation(); action(); });
-      return b;
-    };
-    controls.append(
-      button('flip-h', 'Turn over sideways, to show the other side', ICONS.flipH, () => this.userAction(() => this.flipHorizontal())),
-      button('spin', 'Turn upside down', ICONS.spin, () => this.userAction(() => this.spin())),
-      button('flip-v', 'Turn over top to bottom, to show the other side', ICONS.flipV, () => this.userAction(() => this.flipVertical())),
-      button('move', 'Move to another slot', ICONS.move, () => toggleMove(this)),
-    );
-    this.el.append(this.card, controls);
+    this.front = document.createElement('div');
+    this.front.className = 'face front';
+    this.back = document.createElement('div');
+    this.back.className = 'face back';
+    this.card.append(this.front, this.back);
+    this.el.append(this.card);
 
     this.card.addEventListener('transitionend', (e) => {
       if (e.target === this.card && e.propertyName === 'transform') this.normalise();
     });
-    this.el.addEventListener('click', () => onPanelClick(this));
+    this.el.addEventListener('click', () => onPieceClick(this));
+    this.el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') attachControls(this); });
+    this.el.addEventListener('focus', () => attachControls(this));
     this.setSlot(index);
     this.render(false);
   }
 
-  get front() { return ((this.angles.y + this.angles.x) / 180) % 2 === 0; }
-  get rotated() { return ((this.angles.z + this.angles.x) / 180) % 2 === 1; }
-  get encoding() { return new PaintingEncoding(this.index, this.rotated, this.front); }
+  get frontVisible() { return mod360(this.angles.y + this.angles.x) === 0; }
+  get rotation() { return mod360(this.angles.z + this.angles.x); }
+  get encoding() { return new PaintingEncoding(this.index, this.rotation, this.frontVisible); }
+  get faceKey() { return `${this.panel + 1}${this.frontVisible ? 'a' : 'b'}`; }
 
-  setImages(set) {
-    this.frontImg.src = imageUrl(set, this.index + 1, 'a');
-    this.backImg.src = imageUrl(set, this.index + 1, 'b');
+  /** Show this piece's part of the panel images. The back of column c is column (m−1−c) of the back image. */
+  setImages(set, m) {
+    const pos = (col) => (m === 1 ? '0 0' : `${(col / (m - 1)) * 100}% ${(this.cellRow / (m - 1)) * 100}%`);
+    const size = `${m * 100}% ${m * 100}%`;
+    Object.assign(this.front.style, {
+      backgroundImage: `url("${imageUrl(set, this.panel + 1, 'a')}")`, backgroundSize: size, backgroundPosition: pos(this.cellColumn),
+    });
+    Object.assign(this.back.style, {
+      backgroundImage: `url("${imageUrl(set, this.panel + 1, 'b')}")`, backgroundSize: size, backgroundPosition: pos(m - 1 - this.cellColumn),
+    });
     this.updateLabel();
   }
 
   updateLabel() {
-    this.el.setAttribute('aria-label',
-      `Panel ${this.index + 1}, ${this.front ? 'front' : 'back'}${this.rotated ? ', upside down' : ''}`);
+    const turn = { 0: '', 90: ', turned a quarter turn clockwise', 180: ', upside down', 270: ', turned a quarter turn anticlockwise' }[this.rotation];
+    const part = state.multiplier > 1 ? ` piece ${this.cellRow * state.multiplier + this.cellColumn + 1}` : '';
+    this.el.setAttribute('aria-label', `Panel ${this.panel + 1}${part}, ${this.frontVisible ? 'front' : 'back'}${turn}`);
   }
 
   setSlot(slot) {
     this.slot = slot;
-    this.el.style.setProperty('--col', slot % COLUMNS);
-    this.el.style.setProperty('--row', Math.floor(slot / COLUMNS));
+    this.el.style.setProperty('--col', slot % state.columns);
+    this.el.style.setProperty('--row', Math.floor(slot / state.columns));
   }
 
   render(animate) {
@@ -252,30 +247,63 @@ class Panel {
   /** After an animation, fold the angles back into an equivalent small form (no visible change). */
   normalise() {
     const { x, y, z } = this.angles;
-    if (x === 0 && y < 360 && z < 360) return;
-    this.angles = { x: 0, y: (y + x) % 360, z: (z + x) % 360 };
+    if (x === 0 && y >= 0 && y < 360 && z >= 0 && z < 360) return;
+    this.angles = { x: 0, y: mod360(y + x), z: mod360(z + x) };
     this.render(false);
   }
 
   flipHorizontal() { this.angles.y += 180; this.render(true); }
   flipVertical() { this.angles.x += 180; this.render(true); }
-  spin() { this.angles.z += 180; this.render(true); }
+  turn() { this.angles.z += state.set.rotations.length === 4 ? 90 : 180; this.render(true); }
 
-  /** Show the given face/orientation, animating the shortest way there. */
-  setState(front, rotated, animate) {
+  /** Show the given face/rotation, animating the shortest way there. */
+  setState(frontVisible, rotation, animate) {
     if (!animate) {
-      this.angles = { x: 0, y: front ? 0 : 180, z: rotated ? 180 : 0 };
+      this.angles = { x: 0, y: frontVisible ? 0 : 180, z: rotation };
     } else {
-      if (front !== this.front) this.angles.y += 180;
-      if (rotated !== this.rotated) this.angles.z += 180;
+      if (frontVisible !== this.frontVisible) this.angles.y += 180;
+      let dz = mod360(rotation - this.rotation);
+      if (dz === 270) dz = -90;
+      this.angles.z += dz;
     }
     this.render(animate);
   }
+}
 
-  userAction(fn) {
-    fn();
-    onGridChanged();
+// Shared hover/tap controls, moved into whichever piece is active.
+const controls = document.createElement('div');
+controls.className = 'controls';
+function controlButton(cls, label, icon, action) {
+  const b = document.createElement('button');
+  b.className = cls;
+  b.type = 'button';
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.innerHTML = icon;
+  b.addEventListener('click', (e) => { e.stopPropagation(); if (controls.piece) action(controls.piece); });
+  controls.append(b);
+  return b;
+}
+controlButton('flip-h', 'Turn over sideways, to show the other side', ICONS.flipH, (p) => { p.flipHorizontal(); onGridChanged(); });
+const turnButton = controlButton('spin', 'Turn upside down', ICONS.spin, (p) => { p.turn(); onGridChanged(); });
+controlButton('flip-v', 'Turn over top to bottom, to show the other side', ICONS.flipV, (p) => { p.flipVertical(); onGridChanged(); });
+controlButton('move', 'Move to another slot', ICONS.move, (p) => toggleMove(p));
+
+function attachControls(piece) {
+  if (mode !== 'manual' || moveFrom) return;
+  if (controls.piece !== piece) {
+    controls.piece?.el.classList.remove('has-controls');
+    controls.piece = piece;
+    piece.el.append(controls);
+    piece.el.classList.add('has-controls');
   }
+}
+
+function updateTurnButton() {
+  const quarter = state.set?.rotations.length === 4;
+  const label = quarter ? 'Turn a quarter turn clockwise' : 'Turn upside down';
+  turnButton.title = label;
+  turnButton.setAttribute('aria-label', label);
 }
 
 // ---------------------------------------------------------------------------
@@ -283,51 +311,62 @@ class Panel {
 // ---------------------------------------------------------------------------
 
 const gridEl = $('grid');
-const panels = Array.from({ length: NUMBER_OF_PAINTINGS }, (_, i) => new Panel(i));
-gridEl.append(...panels.map((p) => p.el));
+const state = {
+  setInfo: null,        // catalogue entry
+  set: null,            // PaintingSet (pixel data, split into pieces)
+  multiplier: 1,
+  rows: PANEL_ROWS,
+  columns: PANEL_COLUMNS,
+  aspect: 175 / 224,
+};
+let pieces = [];
+const panelCache = new Map(); // set id -> Promise<{ panels: [{front, back}] ImageData }>
 
-let paintingSet = null;       // PaintingSet (pixel data) for the current set
-let loadedSet = null;
 let mode = 'manual';          // 'manual' | 'slideshow' | 'evolving'
 let moveFrom = null;
 let slideTimer = null;
 let ga = null;
-let gaSet = null;
+let gaKey = null;             // `${setId}/${multiplier}` the GA belongs to
 let gaTimer = null;
 let lastBestToken = null;
 let startFitness = null;
 
 function currentGrid() {
-  const slots = new Array(NUMBER_OF_PAINTINGS);
-  for (const p of panels) slots[p.slot] = p.encoding;
+  const slots = new Array(pieces.length);
+  for (const p of pieces) slots[p.slot] = p.encoding;
   return new GridEncoding(slots);
 }
 
 function configure(grid, animate) {
   grid.encodings.forEach((enc, slot) => {
-    const p = panels[enc.paintingIndex];
+    const p = pieces[enc.paintingIndex];
     p.setSlot(slot);
-    p.setState(enc.frontVisible, enc.rotated, animate);
+    p.setState(enc.frontVisible, enc.rotation, animate);
   });
   onGridChanged();
 }
 
 function onGridChanged() {
-  sound.update(panels);
-  if (paintingSet) {
-    const f = fitness(currentGrid(), paintingSet, { type: settings.fitnessType, edgeThickness: settings.edgeThickness });
+  sound.update(new Set(pieces.map((p) => p.faceKey)));
+  if (state.set) {
+    const f = fitness(currentGrid(), state.set, { type: settings.fitnessType, edgeThickness: settings.edgeThickness });
     $('current-fitness').textContent = f.toFixed(2);
   }
 }
 
-function randomise() { configure(GridEncoding.random(), true); }
+function randomise() { configure(GridEncoding.random(state.set.count, state.set.rotations), true); }
 
 function setMode(next) {
   mode = next;
   body.classList.toggle('manual', mode === 'manual');
   sound.setBackground(mode !== 'manual');
-  if (mode !== 'manual') cancelMove();
-  for (const p of panels) p.el.classList.remove('active');
+  if (mode !== 'manual') { cancelMove(); detachControls(); }
+}
+
+function detachControls() {
+  controls.piece?.el.classList.remove('has-controls', 'active');
+  controls.piece = null;
+  controls.remove();
 }
 
 // ---------------------------------------------------------------------------
@@ -352,32 +391,69 @@ function pixels(img) {
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-let aspect = 175 / 224;
-let setLoadToken = 0;
+function loadPanels(setInfo) {
+  if (!panelCache.has(setInfo.id)) {
+    const promise = Promise.all(Array.from({ length: NUMBER_OF_PANELS }, async (_, i) => {
+      const [front, back] = await Promise.all([
+        loadImage(imageUrl(setInfo, i + 1, 'a')),
+        loadImage(imageUrl(setInfo, i + 1, 'b')),
+      ]);
+      return { front: pixels(front), back: pixels(back) };
+    }));
+    promise.catch(() => panelCache.delete(setInfo.id));
+    panelCache.set(setInfo.id, promise);
+  }
+  return panelCache.get(setInfo.id);
+}
 
-async function loadSet(set) {
-  const token = ++setLoadToken;
+let loadToken = 0;
+
+/** Load (or switch to) a painting set and/or a number of pieces per panel. */
+async function useSet(setId, multiplier, grid = null, animate = false) {
+  const setInfo = findSet(setId) || findSet(DEFAULT_SET);
+  const m = clampMultiplier(multiplier);
+  const token = ++loadToken;
   $('loading').hidden = false;
+  $('loading').textContent = 'Loading panels…';
   gridEl.style.visibility = 'hidden';
   try {
-    const faces = await Promise.all(panels.map(async (p) => {
-      const [front, back] = await Promise.all([
-        loadImage(imageUrl(set, p.index + 1, 'a')),
-        loadImage(imageUrl(set, p.index + 1, 'b')),
-      ]);
-      return { front, back };
-    }));
-    if (token !== setLoadToken) return false;
-    paintingSet = new PaintingSet(faces.map((f) => ({ front: pixels(f.front), back: pixels(f.back) })));
-    aspect = faces[0].front.naturalWidth / faces[0].front.naturalHeight;
-    loadedSet = set;
-    panels.forEach((p) => p.setImages(set));
-    sound.useSet(set);
+    const panels = await loadPanels(setInfo);
+    if (token !== loadToken) return false;
+    const setChanged = state.setInfo !== setInfo;
+    state.setInfo = setInfo;
+    state.set = new PaintingSet(panels, m);
+    state.multiplier = m;
+    state.rows = state.set.rows;
+    state.columns = state.set.columns;
+    state.aspect = state.set.pieceWidth / state.set.pieceHeight;
+    settings.set = setInfo.id;
+    settings.multiplier = m;
+    persistSettings();
+    $('set-choice').value = setInfo.id;
+    $('multiplier').value = String(m);
+    updateEdgeThicknessLimit();
+    updateTurnButton();
+
+    detachControls();
+    cancelMove();
+    pieces = Array.from({ length: state.set.count }, (_, i) => new Piece(i, m));
+    pieces.forEach((p) => p.setImages(setInfo, m));
+    gridEl.replaceChildren(...pieces.map((p) => p.el));
+    gridEl.style.setProperty('--rows', state.rows);
+    gridEl.style.setProperty('--cols', state.columns);
+    gridEl.classList.toggle('split', m > 1);
+    body.classList.toggle('many-pieces', state.set.count > 300);
+    if (setChanged) sound.useSet(setInfo);
     layout();
+
+    if (ga && gaKey !== `${setInfo.id}/${m}`) resetEvolution();
+    const start = grid && grid.isValid(state.set.count)
+      ? grid.constrainRotations(state.set.rotations)
+      : GridEncoding.random(state.set.count, state.set.rotations);
+    configure(start, false);
     gridEl.style.visibility = '';
     $('loading').hidden = true;
-    if (ga && gaSet !== set) resetEvolution();
-    onGridChanged();
+    if (animate) requestAnimationFrame(() => randomise());
     return true;
   } catch (err) {
     $('loading').textContent = `Sorry — the panels could not be loaded. ${err.message}`;
@@ -391,10 +467,12 @@ function layout() {
   const pad = Math.min(48, stage.width * 0.05);
   const w = Math.max(100, stage.width - pad * 2);
   const h = Math.max(100, stage.height - pad * 2);
-  const cw = Math.floor(Math.min(w / COLUMNS, (h / ROWS) * aspect));
-  const ch = Math.floor(cw / aspect);
-  document.documentElement.style.setProperty('--cw', `${cw}px`);
-  document.documentElement.style.setProperty('--ch', `${ch}px`);
+  const cw = Math.min(w / state.columns, (h / state.rows) * state.aspect);
+  const ch = cw / state.aspect;
+  // Whole pixels for whole panels; fractional sizes are fine (and needed) for small pieces.
+  const round = state.multiplier === 1 ? Math.floor : (v) => Math.floor(v * 100) / 100;
+  document.documentElement.style.setProperty('--cw', `${round(cw)}px`);
+  document.documentElement.style.setProperty('--ch', `${round(ch)}px`);
 }
 window.addEventListener('resize', layout);
 $('stage').addEventListener('transitionend', layout);
@@ -403,28 +481,29 @@ $('stage').addEventListener('transitionend', layout);
 // Manual interaction
 // ---------------------------------------------------------------------------
 
-function onPanelClick(panel) {
+function onPieceClick(piece) {
   if (mode === 'evolving') {
-    flash('evolve-status', 'Pause evolution to rearrange panels by hand.');
+    flash('evolve-status', 'Pause evolution to rearrange pieces by hand.');
     return;
   }
   if (mode === 'slideshow') stopSlideshow();
   if (moveFrom) {
-    if (panel !== moveFrom) swap(moveFrom, panel);
+    if (piece !== moveFrom) swap(moveFrom, piece);
     cancelMove();
     return;
   }
-  // Tap support for touch screens (hover devices see the controls anyway).
-  const wasActive = panel.el.classList.contains('active');
-  for (const p of panels) p.el.classList.remove('active');
-  if (!wasActive) panel.el.classList.add('active');
+  // Tap support for touch screens (mouse users see the controls on hover).
+  const wasActive = piece.el.classList.contains('active') && controls.piece === piece;
+  attachControls(piece);
+  for (const p of pieces) p.el.classList.remove('active');
+  if (!wasActive) piece.el.classList.add('active');
 }
 
-function toggleMove(panel) {
-  if (moveFrom === panel) { cancelMove(); return; }
+function toggleMove(piece) {
+  if (moveFrom === piece) { cancelMove(); return; }
   cancelMove();
-  moveFrom = panel;
-  panel.el.classList.add('move-from');
+  moveFrom = piece;
+  piece.el.classList.add('move-from');
   body.classList.add('moving');
 }
 
@@ -432,7 +511,7 @@ function cancelMove() {
   moveFrom?.el.classList.remove('move-from');
   moveFrom = null;
   body.classList.remove('moving');
-  for (const p of panels) p.el.classList.remove('active');
+  for (const p of pieces) p.el.classList.remove('active');
 }
 
 function swap(a, b) {
@@ -477,11 +556,11 @@ function paceMs() {
 }
 
 function startEvolution() {
-  if (!paintingSet) return;
+  if (!state.set) return;
   if (mode === 'slideshow') stopSlideshow();
   if (!ga) {
-    ga = new GeneticAlgorithm(paintingSet, gaSettings());
-    gaSet = loadedSet;
+    ga = new GeneticAlgorithm(state.set, gaSettings());
+    gaKey = `${state.setInfo.id}/${state.multiplier}`;
     startFitness = null;
   } else {
     const before = ga.settings;
@@ -533,7 +612,7 @@ function pauseEvolution() {
 function resetEvolution() {
   pauseEvolution();
   ga = null;
-  gaSet = null;
+  gaKey = null;
   lastBestToken = null;
   startFitness = null;
   updateEvolveUI();
@@ -541,8 +620,7 @@ function resetEvolution() {
 
 function updateEvolveUI() {
   const running = mode === 'evolving';
-  const btn = $('evolve');
-  btn.textContent = running ? 'Pause evolution' : (ga && ga.generation > 0 ? 'Continue evolution' : 'Start evolution');
+  $('evolve').textContent = running ? 'Pause evolution' : (ga && ga.generation > 0 ? 'Continue evolution' : 'Start evolution');
   $('reset-evolve').hidden = !ga || running;
   $('save-ga').disabled = !ga || running || ga.population.length === 0;
   $('load-ga').disabled = running;
@@ -557,7 +635,7 @@ function updateEvolveUI() {
 }
 
 // ---------------------------------------------------------------------------
-// Save / load (JSON, plus XML files saved by the Silverlight version)
+// Save / load (JSON, plus XML files saved by either Silverlight version)
 // ---------------------------------------------------------------------------
 
 function download(filename, data) {
@@ -579,30 +657,45 @@ function pickFile() {
 }
 
 const xmlBool = (s) => String(s).trim().toLowerCase() === 'true';
-const xmlText = (el, name) => el.querySelector(`:scope > ${name}`)?.textContent ?? null;
+const xmlText = (el, name) => el?.querySelector(`:scope > ${name}`)?.textContent ?? null;
 
+/** Rectangular version: <Rotated>True</Rotated>; square version: <Rotation>90</Rotation> and <DimensionMultiplier>. */
 function gridFromXml(el) {
-  return new GridEncoding([...el.querySelectorAll(':scope > PaintingEncoding')].map((pe) => new PaintingEncoding(
-    parseInt(xmlText(pe, 'PaintingIndex'), 10),
-    xmlBool(xmlText(pe, 'Rotated')),
-    xmlBool(xmlText(pe, 'FrontVisible')),
-  )));
+  return new GridEncoding([...el.querySelectorAll(':scope > PaintingEncoding')].map((pe) => {
+    const rotation = xmlText(pe, 'Rotation');
+    return new PaintingEncoding(
+      parseInt(xmlText(pe, 'PaintingIndex'), 10),
+      rotation != null ? normaliseAngle(Number(rotation)) : (xmlBool(xmlText(pe, 'Rotated')) ? 180 : 0),
+      xmlBool(xmlText(pe, 'FrontVisible')),
+    );
+  }));
 }
+const isSquareXml = (el) => !!el && (el.querySelector(':scope > DimensionMultiplier') || el.querySelector(':scope > PaintingEncoding > Rotation'));
 
-/** Returns { kind: 'grid'|'ga', set, grid?, ga? } from a JSON or legacy XML file. */
+/** Returns { kind: 'grid'|'ga', set, multiplier, grid?, ga? } from a JSON or legacy XML file. */
 async function parseSaveFile(file) {
   const text = await file.text();
   if (text.trimStart().startsWith('<')) {
     const doc = new DOMParser().parseFromString(text, 'application/xml');
     if (doc.querySelector('parsererror')) throw new Error('Not a valid XML file');
     const root = doc.documentElement;
-    const set = parseInt(xmlText(root, 'PaintingSelection'), 10) || settings.set;
-    if (root.nodeName === 'PaintingGridEncoding') return { kind: 'grid', set, grid: gridFromXml(root) };
+    if (root.nodeName === 'PaintingGridEncoding') {
+      const square = isSquareXml(root);
+      return {
+        kind: 'grid',
+        set: normaliseSetId(xmlText(root, 'PaintingSelection'), { square }),
+        multiplier: parseInt(xmlText(root, 'DimensionMultiplier'), 10) || 1,
+        grid: gridFromXml(root),
+      };
+    }
     if (root.nodeName === 'GeneticAlgorithm') {
-      const num = (n, d) => { const v = Number(xmlText(root, n)); return Number.isFinite(v) ? v : d; };
+      const individuals = [...root.querySelectorAll(':scope > Population > Individual > PaintingGridEncoding')];
+      const square = isSquareXml(individuals[0]);
+      const num = (n, d) => { const v = Number(xmlText(root, n)); return Number.isFinite(v) && xmlText(root, n) != null ? v : d; };
       return {
         kind: 'ga',
-        set,
+        set: normaliseSetId(xmlText(root, 'PaintingSelection'), { square }),
+        multiplier: parseInt(xmlText(individuals[0], 'DimensionMultiplier'), 10) || 1,
         ga: {
           settings: {
             maxGenerations: num('MaxGenerations', 100),
@@ -613,32 +706,18 @@ async function parseSaveFile(file) {
             edgeThickness: num('EdgeThickness', 1),
           },
           generation: num('Generation', 0),
-          population: [...root.querySelectorAll(':scope > Population > Individual')].map((ind) => ({
-            grid: gridFromXml(ind.querySelector(':scope > PaintingGridEncoding')).toJSON(),
-          })),
+          population: individuals.map((g) => ({ grid: gridFromXml(g).toJSON() })),
         },
       };
     }
     throw new Error(`Unrecognised file (${root.nodeName})`);
   }
   const obj = JSON.parse(text);
-  if (obj.type === 'evolving-art/grid') return { kind: 'grid', set: obj.set, grid: GridEncoding.fromJSON(obj.grid) };
-  if (obj.type === 'evolving-art/ga') return { kind: 'ga', set: obj.set, ga: obj.ga };
+  const set = normaliseSetId(obj.set);
+  const multiplier = clampMultiplier(obj.multiplier ?? 1);
+  if (obj.type === 'evolving-art/grid') return { kind: 'grid', set, multiplier, grid: GridEncoding.fromJSON(obj.grid) };
+  if (obj.type === 'evolving-art/ga') return { kind: 'ga', set, multiplier, ga: obj.ga };
   throw new Error('Unrecognised file');
-}
-
-function validGrid(grid) {
-  const seen = new Set(grid.encodings.map((e) => e.paintingIndex));
-  return grid.encodings.length === NUMBER_OF_PAINTINGS && seen.size === NUMBER_OF_PAINTINGS
-    && [...seen].every((i) => i >= 0 && i < NUMBER_OF_PAINTINGS);
-}
-
-async function switchSetIfNeeded(set) {
-  if (set === loadedSet || !(set >= 1 && set <= 4)) return;
-  settings.set = set;
-  $('set-choice').value = String(set);
-  persistSettings();
-  await loadSet(set);
 }
 
 async function loadGridFile() {
@@ -647,10 +726,16 @@ async function loadGridFile() {
   try {
     const result = await parseSaveFile(file);
     if (result.kind !== 'grid') throw new Error('That file is an evolution run — use “Load run…” on the Evolve tab.');
-    if (!validGrid(result.grid)) throw new Error('The arrangement in that file is incomplete.');
+    const count = NUMBER_OF_PANELS * result.multiplier ** 2;
+    if (!result.grid.isValid(count)) throw new Error('The arrangement in that file is incomplete.');
     stopSlideshow();
-    await switchSetIfNeeded(result.set);
-    configure(result.grid, true);
+    if (mode === 'evolving') pauseEvolution();
+    const setId = result.set || settings.set;
+    if (setId === state.setInfo?.id && result.multiplier === state.multiplier) {
+      configure(result.grid.constrainRotations(state.set.rotations), true);
+    } else {
+      await useSet(setId, result.multiplier, result.grid);
+    }
     flash('explore-status', 'Arrangement loaded.');
   } catch (err) {
     flash('explore-status', err.message);
@@ -663,15 +748,16 @@ async function loadGaFile() {
   try {
     const result = await parseSaveFile(file);
     if (result.kind !== 'ga') throw new Error('That file is a single arrangement — use “Load…” on the Explore tab.');
+    const count = NUMBER_OF_PANELS * result.multiplier ** 2;
+    const grids = result.ga.population.map((p) => GridEncoding.fromJSON(p.grid));
+    if (grids.length < 2 || !grids.every((g) => g.isValid(count))) throw new Error('The population in that file is incomplete.');
     stopSlideshow();
     pauseEvolution();
-    await switchSetIfNeeded(result.set);
-    const loaded = GeneticAlgorithm.fromJSON(paintingSet, result.ga); // re-scored with the current code
-    if (loaded.population.length < 2 || !loaded.population.every((i) => validGrid(i.encoding))) {
-      throw new Error('The population in that file is incomplete.');
-    }
+    const setId = result.set || settings.set;
+    if (setId !== state.setInfo?.id || result.multiplier !== state.multiplier) await useSet(setId, result.multiplier);
+    const loaded = GeneticAlgorithm.fromJSON(state.set, result.ga); // re-scored with the current code
     ga = loaded;
-    gaSet = loadedSet;
+    gaKey = `${state.setInfo.id}/${state.multiplier}`;
     startFitness = null;
     Object.assign(settings, ga.settings);
     persistSettings();
@@ -686,17 +772,19 @@ async function loadGaFile() {
 }
 
 function shareLink() {
-  const hash = `#set=${loadedSet}&grid=${currentGrid().toToken()}`;
-  history.replaceState(null, '', hash);
+  const m = state.multiplier > 1 ? `&m=${state.multiplier}` : '';
+  history.replaceState(null, '', `#set=${state.setInfo.id}${m}&grid=${currentGrid().toToken()}`);
   return location.href;
 }
 
 function readHash() {
   const params = new URLSearchParams(location.hash.slice(1));
-  const set = parseInt(params.get('set'), 10);
+  const set = normaliseSetId(params.get('set'));
+  const multiplier = clampMultiplier(params.get('m') || 1);
   let grid = null;
   try { if (params.get('grid')) grid = GridEncoding.fromToken(params.get('grid')); } catch { grid = null; }
-  return { set: set >= 1 && set <= 4 ? set : null, grid };
+  if (grid && !grid.isValid(NUMBER_OF_PANELS * multiplier ** 2)) grid = null;
+  return { set, multiplier, grid };
 }
 
 // ---------------------------------------------------------------------------
@@ -726,7 +814,10 @@ tabs.forEach((t) => t.addEventListener('click', () => selectTab(t)));
 $('randomise').addEventListener('click', () => { stopSlideshow(); if (mode === 'evolving') pauseEvolution(); randomise(); });
 $('slideshow').addEventListener('click', () => (mode === 'slideshow' ? stopSlideshow() : startSlideshow()));
 $('save-grid').addEventListener('click', () => {
-  download(`evolving-art-roberto${loadedSet}.json`, { type: 'evolving-art/grid', set: loadedSet, grid: currentGrid().toJSON() });
+  const m = state.multiplier > 1 ? `-${state.multiplier}x${state.multiplier}` : '';
+  download(`evolving-art-${state.setInfo.id}${m}.json`, {
+    type: 'evolving-art/grid', set: state.setInfo.id, multiplier: state.multiplier, grid: currentGrid().toJSON(),
+  });
 });
 $('load-grid').addEventListener('click', loadGridFile);
 $('copy-link').addEventListener('click', async () => {
@@ -739,11 +830,28 @@ $('copy-link').addEventListener('click', async () => {
 $('evolve').addEventListener('click', () => (mode === 'evolving' ? pauseEvolution() : startEvolution()));
 $('reset-evolve').addEventListener('click', resetEvolution);
 $('save-ga').addEventListener('click', () => {
-  download(`evolving-art-run-roberto${gaSet}-gen${ga.generation}.json`, { type: 'evolving-art/ga', set: gaSet, ga: ga.toJSON() });
+  const [setId, m] = gaKey.split('/');
+  download(`evolving-art-run-${setId}${m > 1 ? `-${m}x${m}` : ''}-gen${ga.generation}.json`, {
+    type: 'evolving-art/ga', set: setId, multiplier: Number(m), ga: ga.toJSON(),
+  });
 });
 $('load-ga').addEventListener('click', loadGaFile);
 
 // Settings form
+const setChoice = $('set-choice');
+for (const group of [...new Set(PAINTING_SETS.map((s) => s.group))]) {
+  const og = document.createElement('optgroup');
+  og.label = group;
+  for (const s of PAINTING_SETS.filter((x) => x.group === group)) {
+    og.append(new Option(`${s.name} — ${s.group.toLowerCase()}${s.sounds ? ', with music' : ''}`, s.id));
+  }
+  setChoice.append(og);
+}
+const multiplierChoice = $('multiplier');
+for (let m = 1; m <= MAX_MULTIPLIER; m++) {
+  multiplierChoice.append(new Option(m === 1 ? 'Whole panels' : `${m} × ${m} (${NUMBER_OF_PANELS * m * m} pieces)`, String(m)));
+}
+
 const numberFields = {
   'edge-thickness': ['edgeThickness', 1, 50, true],
   'max-generations': ['maxGenerations', 1, 100000, true],
@@ -752,8 +860,17 @@ const numberFields = {
   'crossover-rate': ['crossoverRate', 0, 1, false],
 };
 
+function updateEdgeThicknessLimit() {
+  if (!state.set) return;
+  const max = Math.max(1, Math.floor(Math.min(state.set.pieceWidth, state.set.pieceHeight) / 2));
+  numberFields['edge-thickness'][2] = max;
+  $('edge-thickness').max = String(max);
+  if (settings.edgeThickness > max) { settings.edgeThickness = max; $('edge-thickness').value = max; }
+}
+
 function syncSettingsForm() {
-  $('set-choice').value = String(settings.set);
+  setChoice.value = settings.set;
+  multiplierChoice.value = String(settings.multiplier);
   $('slide-duration').value = String(settings.slideSeconds);
   $('fitness-type').value = String(settings.fitnessType);
   $('pace').value = String(settings.pace);
@@ -762,8 +879,9 @@ function syncSettingsForm() {
   updateEvolveUI();
 }
 
-for (const [id, [key, min, max, integer]] of Object.entries(numberFields)) {
+for (const [id, field] of Object.entries(numberFields)) {
   $(id).addEventListener('change', (e) => {
+    const [key, min, max, integer] = field;
     let v = Number(e.target.value);
     if (!Number.isFinite(v)) v = DEFAULT_SETTINGS[key];
     v = Math.min(max, Math.max(min, integer ? Math.round(v) : v));
@@ -786,14 +904,20 @@ $('slide-duration').addEventListener('change', (e) => {
   if (mode === 'slideshow') { clearInterval(slideTimer); slideTimer = setInterval(randomise, settings.slideSeconds * 1000); }
 });
 $('pace').addEventListener('change', (e) => { settings.pace = e.target.value; persistSettings(); });
-$('set-choice').addEventListener('change', async (e) => {
-  settings.set = Number(e.target.value);
-  persistSettings();
-  await loadSet(settings.set);
-});
+
+async function changeLayout(setId, multiplier) {
+  const wasSlideshow = mode === 'slideshow';
+  if (mode === 'evolving') pauseEvolution();
+  await useSet(setId, multiplier);
+  if (wasSlideshow && started) { clearInterval(slideTimer); slideTimer = setInterval(randomise, settings.slideSeconds * 1000); }
+}
+setChoice.addEventListener('change', () => changeLayout(setChoice.value, state.multiplier));
+multiplierChoice.addEventListener('change', () => changeLayout(state.setInfo.id, Number(multiplierChoice.value)));
+
 $('defaults').addEventListener('click', () => {
   Object.assign(settings, { slideSeconds: SLIDESHOW_DEFAULT, pace: 'slide', ...DEFAULT_SETTINGS });
   persistSettings();
+  updateEdgeThicknessLimit();
   syncSettingsForm();
   onGridChanged();
 });
@@ -854,15 +978,13 @@ document.addEventListener('keydown', (e) => {
 
 (async function init() {
   const fromHash = readHash();
-  if (fromHash.set) settings.set = fromHash.set;
+  if (fromHash.set) { settings.set = fromHash.set; settings.multiplier = fromHash.multiplier; }
   syncSettingsForm();
   setMode('manual');
   const beginButton = $('begin');
   beginButton.disabled = true;
   beginButton.textContent = 'Loading…';
-  layout();
-  if (!(await loadSet(settings.set))) return;
-  configure(fromHash.grid || GridEncoding.random(), false);
+  if (!(await useSet(settings.set, settings.multiplier, fromHash.grid))) return;
   beginButton.disabled = false;
   beginButton.textContent = 'Begin';
   beginButton.focus();

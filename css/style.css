@@ -40,8 +40,8 @@ body.ui-hidden #stage { inset: 0; }
 
 #grid {
   position: relative;
-  width: calc(var(--cw) * 4);
-  height: calc(var(--ch) * 3);
+  width: calc(var(--cw) * var(--cols, 4));
+  height: calc(var(--ch) * var(--rows, 3));
 }
 #loading { position: absolute; color: var(--muted); font-family: var(--serif); font-style: italic; }
 
@@ -67,15 +67,20 @@ body.ui-hidden #stage { inset: 0; }
 .face {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
   display: block;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
   user-select: none;
   -webkit-user-drag: none;
 }
+.face { background-repeat: no-repeat; }
+/* Pieces cut from one panel: overlap by a hair so sub-pixel edges don't show the black background. */
+#grid.split .face { inset: -0.6px; }
 .face.back { transform: rotateY(180deg); }
+.piece.has-controls { z-index: 3; }
+.piece:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 3; }
+body.many-pieces { --move: 500ms; }
+.small-hint { font-size: .8rem; margin: -2px 0 6px; }
 
 /* Per-panel controls (manual mode only) */
 .controls {
@@ -206,7 +211,8 @@ button.wide { width: 100%; }
 
 .status { min-height: 1.3em; margin: 10px 0 0; font-size: .85rem; color: var(--accent); }
 
-.field { display: grid; grid-template-columns: 1fr 9.5rem; align-items: center; gap: 10px; margin: 8px 0; font-size: .9rem; }
+.field { display: grid; grid-template-columns: 1fr 11.5rem; align-items: center; gap: 10px; margin: 8px 0; font-size: .9rem; }
+.field.stacked { grid-template-columns: 1fr; gap: 6px; }
 .field select, .field input {
   width: 100%; padding: 7px 8px; border-radius: 7px;
   background: #1b1b1b; border: 1px solid #3a3a3a;

@@ -1,0 +1,10 @@
+# Build output and per-user files from the Silverlight / Visual Studio projects
+[Bb]in/
+[Oo]bj/
+*.suo
+*.user
+Thumbs.db
+TurnerTestSquare/**/*.xap
+TurnerTestSquare/Backup/
+TurnerTestSquare/.parasoft.dat/
+TurnerTestSquare/_UpgradeReport_Files/
