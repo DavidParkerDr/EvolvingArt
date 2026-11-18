@@ -7,7 +7,6 @@ import {
 } from './ga.js';
 import { PAINTING_SETS, DEFAULT_SET, findSet, normaliseSetId } from './sets.js';
 
-const MAX_MULTIPLIER = 10;
 const SLIDESHOW_DEFAULT = 6;
 const STORAGE_KEY = 'evolvingArt.settings.v1';
 
@@ -23,16 +22,13 @@ const body = document.body;
 
 const settings = {
   set: DEFAULT_SET,
-  multiplier: 1,
   slideSeconds: SLIDESHOW_DEFAULT,
   pace: 'slide',
   ...DEFAULT_SETTINGS,
 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); } catch { /* storage unavailable */ }
 settings.set = normaliseSetId(settings.set) || DEFAULT_SET;
-settings.multiplier = clampMultiplier(settings.multiplier);
 
-function clampMultiplier(m) { return Math.min(MAX_MULTIPLIER, Math.max(1, parseInt(m, 10) || 1)); }
 function persistSettings() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
 }
@@ -111,7 +107,7 @@ class SoundEngine {
     return this.buffers.get(url);
   }
 
-  /** A panel face's loop plays while any piece of that face is showing. Loops are phase-aligned. */
+  /** A panel face's loop plays while that face is showing. Loops are phase-aligned. */
   update(visibleFaces) {
     if (!this.ctx) return;
     const wanted = new Set([...visibleFaces].filter((k) => this.faces.has(k)));
@@ -155,7 +151,7 @@ class SoundEngine {
 const sound = new SoundEngine();
 
 // ---------------------------------------------------------------------------
-// Pieces
+// Panels
 // ---------------------------------------------------------------------------
 
 const ICONS = {
@@ -167,14 +163,10 @@ const ICONS = {
 
 const mod360 = (a) => ((a % 360) + 360) % 360;
 
-/** One piece of a panel (the whole panel when pieces-per-panel is 1). */
-class Piece {
-  constructor(index, m) {
-    this.index = index;
-    this.panel = Math.floor(index / (m * m));           // 0..11
-    const cell = index % (m * m);
-    this.cellRow = Math.floor(cell / m);
-    this.cellColumn = cell % m;
+/** One double-sided panel, shown as a 3D card. */
+class Panel {
+  constructor(index) {
+    this.index = index;                                  // 0..11
     // Cumulative card angles (degrees): rotateZ(z) rotateX(x) rotateY(y).
     // Turning over sideways adds 180 to y; top-to-bottom adds 180 to x; turning adds 90 or 180 to z.
     this.angles = { x: 0, y: 0, z: 0 };
@@ -196,7 +188,7 @@ class Piece {
     this.card.addEventListener('transitionend', (e) => {
       if (e.target === this.card && e.propertyName === 'transform') this.normalise();
     });
-    this.el.addEventListener('click', () => onPieceClick(this));
+    this.el.addEventListener('click', () => onPanelClick(this));
     this.el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') attachControls(this); });
     this.el.addEventListener('focus', () => attachControls(this));
     this.setSlot(index);
@@ -206,25 +198,17 @@ class Piece {
   get frontVisible() { return mod360(this.angles.y + this.angles.x) === 0; }
   get rotation() { return mod360(this.angles.z + this.angles.x); }
   get encoding() { return new PaintingEncoding(this.index, this.rotation, this.frontVisible); }
-  get faceKey() { return `${this.panel + 1}${this.frontVisible ? 'a' : 'b'}`; }
+  get faceKey() { return `${this.index + 1}${this.frontVisible ? 'a' : 'b'}`; }
 
-  /** Show this piece's part of the panel images. The back of column c is column (m−1−c) of the back image. */
-  setImages(set, m) {
-    const pos = (col) => (m === 1 ? '0 0' : `${(col / (m - 1)) * 100}% ${(this.cellRow / (m - 1)) * 100}%`);
-    const size = `${m * 100}% ${m * 100}%`;
-    Object.assign(this.front.style, {
-      backgroundImage: `url("${imageUrl(set, this.panel + 1, 'a')}")`, backgroundSize: size, backgroundPosition: pos(this.cellColumn),
-    });
-    Object.assign(this.back.style, {
-      backgroundImage: `url("${imageUrl(set, this.panel + 1, 'b')}")`, backgroundSize: size, backgroundPosition: pos(m - 1 - this.cellColumn),
-    });
+  setImages(set) {
+    this.front.style.backgroundImage = `url("${imageUrl(set, this.index + 1, 'a')}")`;
+    this.back.style.backgroundImage = `url("${imageUrl(set, this.index + 1, 'b')}")`;
     this.updateLabel();
   }
 
   updateLabel() {
     const turn = { 0: '', 90: ', turned a quarter turn clockwise', 180: ', upside down', 270: ', turned a quarter turn anticlockwise' }[this.rotation];
-    const part = state.multiplier > 1 ? ` piece ${this.cellRow * state.multiplier + this.cellColumn + 1}` : '';
-    this.el.setAttribute('aria-label', `Panel ${this.panel + 1}${part}, ${this.frontVisible ? 'front' : 'back'}${turn}`);
+    this.el.setAttribute('aria-label', `Panel ${this.index + 1}, ${this.frontVisible ? 'front' : 'back'}${turn}`);
   }
 
   setSlot(slot) {
@@ -270,7 +254,7 @@ class Piece {
   }
 }
 
-// Shared hover/tap controls, moved into whichever piece is active.
+// Shared hover/tap controls, moved into whichever panel is active.
 const controls = document.createElement('div');
 controls.className = 'controls';
 function controlButton(cls, label, icon, action) {
@@ -313,20 +297,19 @@ function updateTurnButton() {
 const gridEl = $('grid');
 const state = {
   setInfo: null,        // catalogue entry
-  set: null,            // PaintingSet (pixel data, split into pieces)
-  multiplier: 1,
+  set: null,            // PaintingSet (pixel data)
   rows: PANEL_ROWS,
   columns: PANEL_COLUMNS,
   aspect: 175 / 224,
 };
-let pieces = [];
+let pieces = [];               // Panel objects, indexed by panel number
 const panelCache = new Map(); // set id -> Promise<{ panels: [{front, back}] ImageData }>
 
 let mode = 'manual';          // 'manual' | 'slideshow' | 'evolving'
 let moveFrom = null;
 let slideTimer = null;
 let ga = null;
-let gaKey = null;             // `${setId}/${multiplier}` the GA belongs to
+let gaKey = null;             // id of the painting set the GA belongs to
 let gaTimer = null;
 let lastBestToken = null;
 let startFitness = null;
@@ -408,10 +391,9 @@ function loadPanels(setInfo) {
 
 let loadToken = 0;
 
-/** Load (or switch to) a painting set and/or a number of pieces per panel. */
-async function useSet(setId, multiplier, grid = null, animate = false) {
+/** Load (or switch to) a painting set. */
+async function useSet(setId, grid = null) {
   const setInfo = findSet(setId) || findSet(DEFAULT_SET);
-  const m = clampMultiplier(multiplier);
   const token = ++loadToken;
   $('loading').hidden = false;
   $('loading').textContent = 'Loading panels…';
@@ -421,39 +403,33 @@ async function useSet(setId, multiplier, grid = null, animate = false) {
     if (token !== loadToken) return false;
     const setChanged = state.setInfo !== setInfo;
     state.setInfo = setInfo;
-    state.set = new PaintingSet(panels, m);
-    state.multiplier = m;
+    state.set = new PaintingSet(panels);
     state.rows = state.set.rows;
     state.columns = state.set.columns;
-    state.aspect = state.set.pieceWidth / state.set.pieceHeight;
+    state.aspect = state.set.panelWidth / state.set.panelHeight;
     settings.set = setInfo.id;
-    settings.multiplier = m;
     persistSettings();
     $('set-choice').value = setInfo.id;
-    $('multiplier').value = String(m);
     updateEdgeThicknessLimit();
     updateTurnButton();
 
     detachControls();
     cancelMove();
-    pieces = Array.from({ length: state.set.count }, (_, i) => new Piece(i, m));
-    pieces.forEach((p) => p.setImages(setInfo, m));
+    pieces = Array.from({ length: state.set.count }, (_, i) => new Panel(i));
+    pieces.forEach((p) => p.setImages(setInfo));
     gridEl.replaceChildren(...pieces.map((p) => p.el));
     gridEl.style.setProperty('--rows', state.rows);
     gridEl.style.setProperty('--cols', state.columns);
-    gridEl.classList.toggle('split', m > 1);
-    body.classList.toggle('many-pieces', state.set.count > 300);
     if (setChanged) sound.useSet(setInfo);
     layout();
 
-    if (ga && gaKey !== `${setInfo.id}/${m}`) resetEvolution();
+    if (ga && gaKey !== setInfo.id) resetEvolution();
     const start = grid && grid.isValid(state.set.count)
       ? grid.constrainRotations(state.set.rotations)
       : GridEncoding.random(state.set.count, state.set.rotations);
     configure(start, false);
     gridEl.style.visibility = '';
     $('loading').hidden = true;
-    if (animate) requestAnimationFrame(() => randomise());
     return true;
   } catch (err) {
     $('loading').textContent = `Sorry — the panels could not be loaded. ${err.message}`;
@@ -467,12 +443,10 @@ function layout() {
   const pad = Math.min(48, stage.width * 0.05);
   const w = Math.max(100, stage.width - pad * 2);
   const h = Math.max(100, stage.height - pad * 2);
-  const cw = Math.min(w / state.columns, (h / state.rows) * state.aspect);
-  const ch = cw / state.aspect;
-  // Whole pixels for whole panels; fractional sizes are fine (and needed) for small pieces.
-  const round = state.multiplier === 1 ? Math.floor : (v) => Math.floor(v * 100) / 100;
-  document.documentElement.style.setProperty('--cw', `${round(cw)}px`);
-  document.documentElement.style.setProperty('--ch', `${round(ch)}px`);
+  const cw = Math.floor(Math.min(w / state.columns, (h / state.rows) * state.aspect));
+  const ch = Math.floor(cw / state.aspect);
+  document.documentElement.style.setProperty('--cw', `${cw}px`);
+  document.documentElement.style.setProperty('--ch', `${ch}px`);
 }
 window.addEventListener('resize', layout);
 $('stage').addEventListener('transitionend', layout);
@@ -481,9 +455,9 @@ $('stage').addEventListener('transitionend', layout);
 // Manual interaction
 // ---------------------------------------------------------------------------
 
-function onPieceClick(piece) {
+function onPanelClick(piece) {
   if (mode === 'evolving') {
-    flash('evolve-status', 'Pause evolution to rearrange pieces by hand.');
+    flash('evolve-status', 'Pause evolution to rearrange panels by hand.');
     return;
   }
   if (mode === 'slideshow') stopSlideshow();
@@ -560,7 +534,7 @@ function startEvolution() {
   if (mode === 'slideshow') stopSlideshow();
   if (!ga) {
     ga = new GeneticAlgorithm(state.set, gaSettings());
-    gaKey = `${state.setInfo.id}/${state.multiplier}`;
+    gaKey = state.setInfo.id;
     startFitness = null;
   } else {
     const before = ga.settings;
@@ -659,7 +633,7 @@ function pickFile() {
 const xmlBool = (s) => String(s).trim().toLowerCase() === 'true';
 const xmlText = (el, name) => el?.querySelector(`:scope > ${name}`)?.textContent ?? null;
 
-/** Rectangular version: <Rotated>True</Rotated>; square version: <Rotation>90</Rotation> and <DimensionMultiplier>. */
+/** Rectangular version: <Rotated>True</Rotated>; square version: <Rotation>90</Rotation>. */
 function gridFromXml(el) {
   return new GridEncoding([...el.querySelectorAll(':scope > PaintingEncoding')].map((pe) => {
     const rotation = xmlText(pe, 'Rotation');
@@ -672,7 +646,10 @@ function gridFromXml(el) {
 }
 const isSquareXml = (el) => !!el && (el.querySelector(':scope > DimensionMultiplier') || el.querySelector(':scope > PaintingEncoding > Rotation'));
 
-/** Returns { kind: 'grid'|'ga', set, multiplier, grid?, ga? } from a JSON or legacy XML file. */
+const SUBDIVIDED = 'That file is from the square version with panels cut into smaller pieces, which this version doesn’t use.';
+const whole = (m) => { if ((parseInt(m, 10) || 1) !== 1) throw new Error(SUBDIVIDED); };
+
+/** Returns { kind: 'grid'|'ga', set, grid?, ga? } from a JSON or legacy XML file. */
 async function parseSaveFile(file) {
   const text = await file.text();
   if (text.trimStart().startsWith('<')) {
@@ -681,21 +658,21 @@ async function parseSaveFile(file) {
     const root = doc.documentElement;
     if (root.nodeName === 'PaintingGridEncoding') {
       const square = isSquareXml(root);
+      whole(xmlText(root, 'DimensionMultiplier'));
       return {
         kind: 'grid',
         set: normaliseSetId(xmlText(root, 'PaintingSelection'), { square }),
-        multiplier: parseInt(xmlText(root, 'DimensionMultiplier'), 10) || 1,
         grid: gridFromXml(root),
       };
     }
     if (root.nodeName === 'GeneticAlgorithm') {
       const individuals = [...root.querySelectorAll(':scope > Population > Individual > PaintingGridEncoding')];
       const square = isSquareXml(individuals[0]);
+      whole(xmlText(individuals[0], 'DimensionMultiplier'));
       const num = (n, d) => { const v = Number(xmlText(root, n)); return Number.isFinite(v) && xmlText(root, n) != null ? v : d; };
       return {
         kind: 'ga',
         set: normaliseSetId(xmlText(root, 'PaintingSelection'), { square }),
-        multiplier: parseInt(xmlText(individuals[0], 'DimensionMultiplier'), 10) || 1,
         ga: {
           settings: {
             maxGenerations: num('MaxGenerations', 100),
@@ -714,9 +691,9 @@ async function parseSaveFile(file) {
   }
   const obj = JSON.parse(text);
   const set = normaliseSetId(obj.set);
-  const multiplier = clampMultiplier(obj.multiplier ?? 1);
-  if (obj.type === 'evolving-art/grid') return { kind: 'grid', set, multiplier, grid: GridEncoding.fromJSON(obj.grid) };
-  if (obj.type === 'evolving-art/ga') return { kind: 'ga', set, multiplier, ga: obj.ga };
+  whole(obj.multiplier);
+  if (obj.type === 'evolving-art/grid') return { kind: 'grid', set, grid: GridEncoding.fromJSON(obj.grid) };
+  if (obj.type === 'evolving-art/ga') return { kind: 'ga', set, ga: obj.ga };
   throw new Error('Unrecognised file');
 }
 
@@ -726,15 +703,14 @@ async function loadGridFile() {
   try {
     const result = await parseSaveFile(file);
     if (result.kind !== 'grid') throw new Error('That file is an evolution run — use “Load run…” on the Evolve tab.');
-    const count = NUMBER_OF_PANELS * result.multiplier ** 2;
-    if (!result.grid.isValid(count)) throw new Error('The arrangement in that file is incomplete.');
+    if (!result.grid.isValid(NUMBER_OF_PANELS)) throw new Error('The arrangement in that file is incomplete.');
     stopSlideshow();
     if (mode === 'evolving') pauseEvolution();
     const setId = result.set || settings.set;
-    if (setId === state.setInfo?.id && result.multiplier === state.multiplier) {
+    if (setId === state.setInfo?.id) {
       configure(result.grid.constrainRotations(state.set.rotations), true);
     } else {
-      await useSet(setId, result.multiplier, result.grid);
+      await useSet(setId, result.grid);
     }
     flash('explore-status', 'Arrangement loaded.');
   } catch (err) {
@@ -748,16 +724,15 @@ async function loadGaFile() {
   try {
     const result = await parseSaveFile(file);
     if (result.kind !== 'ga') throw new Error('That file is a single arrangement — use “Load…” on the Explore tab.');
-    const count = NUMBER_OF_PANELS * result.multiplier ** 2;
     const grids = result.ga.population.map((p) => GridEncoding.fromJSON(p.grid));
-    if (grids.length < 2 || !grids.every((g) => g.isValid(count))) throw new Error('The population in that file is incomplete.');
+    if (grids.length < 2 || !grids.every((g) => g.isValid(NUMBER_OF_PANELS))) throw new Error('The population in that file is incomplete.');
     stopSlideshow();
     pauseEvolution();
     const setId = result.set || settings.set;
-    if (setId !== state.setInfo?.id || result.multiplier !== state.multiplier) await useSet(setId, result.multiplier);
+    if (setId !== state.setInfo?.id) await useSet(setId);
     const loaded = GeneticAlgorithm.fromJSON(state.set, result.ga); // re-scored with the current code
     ga = loaded;
-    gaKey = `${state.setInfo.id}/${state.multiplier}`;
+    gaKey = state.setInfo.id;
     startFitness = null;
     Object.assign(settings, ga.settings);
     persistSettings();
@@ -772,19 +747,17 @@ async function loadGaFile() {
 }
 
 function shareLink() {
-  const m = state.multiplier > 1 ? `&m=${state.multiplier}` : '';
-  history.replaceState(null, '', `#set=${state.setInfo.id}${m}&grid=${currentGrid().toToken()}`);
+  history.replaceState(null, '', `#set=${state.setInfo.id}&grid=${currentGrid().toToken()}`);
   return location.href;
 }
 
 function readHash() {
   const params = new URLSearchParams(location.hash.slice(1));
   const set = normaliseSetId(params.get('set'));
-  const multiplier = clampMultiplier(params.get('m') || 1);
   let grid = null;
   try { if (params.get('grid')) grid = GridEncoding.fromToken(params.get('grid')); } catch { grid = null; }
-  if (grid && !grid.isValid(NUMBER_OF_PANELS * multiplier ** 2)) grid = null;
-  return { set, multiplier, grid };
+  if (grid && !grid.isValid(NUMBER_OF_PANELS)) grid = null;
+  return { set, grid };
 }
 
 // ---------------------------------------------------------------------------
@@ -814,10 +787,7 @@ tabs.forEach((t) => t.addEventListener('click', () => selectTab(t)));
 $('randomise').addEventListener('click', () => { stopSlideshow(); if (mode === 'evolving') pauseEvolution(); randomise(); });
 $('slideshow').addEventListener('click', () => (mode === 'slideshow' ? stopSlideshow() : startSlideshow()));
 $('save-grid').addEventListener('click', () => {
-  const m = state.multiplier > 1 ? `-${state.multiplier}x${state.multiplier}` : '';
-  download(`evolving-art-${state.setInfo.id}${m}.json`, {
-    type: 'evolving-art/grid', set: state.setInfo.id, multiplier: state.multiplier, grid: currentGrid().toJSON(),
-  });
+  download(`evolving-art-${state.setInfo.id}.json`, { type: 'evolving-art/grid', set: state.setInfo.id, grid: currentGrid().toJSON() });
 });
 $('load-grid').addEventListener('click', loadGridFile);
 $('copy-link').addEventListener('click', async () => {
@@ -830,10 +800,7 @@ $('copy-link').addEventListener('click', async () => {
 $('evolve').addEventListener('click', () => (mode === 'evolving' ? pauseEvolution() : startEvolution()));
 $('reset-evolve').addEventListener('click', resetEvolution);
 $('save-ga').addEventListener('click', () => {
-  const [setId, m] = gaKey.split('/');
-  download(`evolving-art-run-${setId}${m > 1 ? `-${m}x${m}` : ''}-gen${ga.generation}.json`, {
-    type: 'evolving-art/ga', set: setId, multiplier: Number(m), ga: ga.toJSON(),
-  });
+  download(`evolving-art-run-${gaKey}-gen${ga.generation}.json`, { type: 'evolving-art/ga', set: gaKey, ga: ga.toJSON() });
 });
 $('load-ga').addEventListener('click', loadGaFile);
 
@@ -843,13 +810,9 @@ for (const group of [...new Set(PAINTING_SETS.map((s) => s.group))]) {
   const og = document.createElement('optgroup');
   og.label = group;
   for (const s of PAINTING_SETS.filter((x) => x.group === group)) {
-    og.append(new Option(`${s.name} — ${s.group.toLowerCase()}${s.sounds ? ', with music' : ''}`, s.id));
+    og.append(new Option(`${s.name} — ${s.group.split(' ')[0].toLowerCase()}${s.sounds ? ' · music' : ''}`, s.id));
   }
   setChoice.append(og);
-}
-const multiplierChoice = $('multiplier');
-for (let m = 1; m <= MAX_MULTIPLIER; m++) {
-  multiplierChoice.append(new Option(m === 1 ? 'Whole panels' : `${m} × ${m} (${NUMBER_OF_PANELS * m * m} pieces)`, String(m)));
 }
 
 const numberFields = {
@@ -862,7 +825,7 @@ const numberFields = {
 
 function updateEdgeThicknessLimit() {
   if (!state.set) return;
-  const max = Math.max(1, Math.floor(Math.min(state.set.pieceWidth, state.set.pieceHeight) / 2));
+  const max = Math.max(1, Math.floor(Math.min(state.set.panelWidth, state.set.panelHeight) / 2));
   numberFields['edge-thickness'][2] = max;
   $('edge-thickness').max = String(max);
   if (settings.edgeThickness > max) { settings.edgeThickness = max; $('edge-thickness').value = max; }
@@ -870,7 +833,6 @@ function updateEdgeThicknessLimit() {
 
 function syncSettingsForm() {
   setChoice.value = settings.set;
-  multiplierChoice.value = String(settings.multiplier);
   $('slide-duration').value = String(settings.slideSeconds);
   $('fitness-type').value = String(settings.fitnessType);
   $('pace').value = String(settings.pace);
@@ -905,14 +867,13 @@ $('slide-duration').addEventListener('change', (e) => {
 });
 $('pace').addEventListener('change', (e) => { settings.pace = e.target.value; persistSettings(); });
 
-async function changeLayout(setId, multiplier) {
+async function changeSet(setId) {
   const wasSlideshow = mode === 'slideshow';
   if (mode === 'evolving') pauseEvolution();
-  await useSet(setId, multiplier);
+  await useSet(setId);
   if (wasSlideshow && started) { clearInterval(slideTimer); slideTimer = setInterval(randomise, settings.slideSeconds * 1000); }
 }
-setChoice.addEventListener('change', () => changeLayout(setChoice.value, state.multiplier));
-multiplierChoice.addEventListener('change', () => changeLayout(state.setInfo.id, Number(multiplierChoice.value)));
+setChoice.addEventListener('change', () => changeSet(setChoice.value));
 
 $('defaults').addEventListener('click', () => {
   Object.assign(settings, { slideSeconds: SLIDESHOW_DEFAULT, pace: 'slide', ...DEFAULT_SETTINGS });
@@ -978,13 +939,13 @@ document.addEventListener('keydown', (e) => {
 
 (async function init() {
   const fromHash = readHash();
-  if (fromHash.set) { settings.set = fromHash.set; settings.multiplier = fromHash.multiplier; }
+  if (fromHash.set) settings.set = fromHash.set;
   syncSettingsForm();
   setMode('manual');
   const beginButton = $('begin');
   beginButton.disabled = true;
   beginButton.textContent = 'Loading…';
-  if (!(await useSet(settings.set, settings.multiplier, fromHash.grid))) return;
+  if (!(await useSet(settings.set, fromHash.grid))) return;
   beginButton.disabled = false;
   beginButton.textContent = 'Begin';
   beginButton.focus();

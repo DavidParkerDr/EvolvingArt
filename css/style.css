@@ -73,14 +73,11 @@ body.ui-hidden #stage { inset: 0; }
   user-select: none;
   -webkit-user-drag: none;
 }
-.face { background-repeat: no-repeat; }
-/* Pieces cut from one panel: overlap by a hair so sub-pixel edges don't show the black background. */
-#grid.split .face { inset: -0.6px; }
+.face { background-repeat: no-repeat; background-size: 100% 100%; }
 .face.back { transform: rotateY(180deg); }
 .piece.has-controls { z-index: 3; }
 .piece:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 3; }
-body.many-pieces { --move: 500ms; }
-.small-hint { font-size: .8rem; margin: -2px 0 6px; }
+
 
 /* Per-panel controls (manual mode only) */
 .controls {
