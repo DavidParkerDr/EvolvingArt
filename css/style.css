@@ -61,7 +61,7 @@ body.ui-hidden #stage { inset: 0; }
   position: absolute;
   inset: 0;
   transform-style: preserve-3d;
-  transition: transform var(--move) cubic-bezier(.45, .05, .25, 1), opacity 200ms;
+  transition: transform var(--move) cubic-bezier(.45, .05, .25, 1);
 }
 .card.snap { transition: none; }
 .face {
@@ -90,6 +90,8 @@ body.ui-hidden #stage { inset: 0; }
   opacity: 0;
   pointer-events: none;
   transition: opacity 150ms;
+  /* Dims the panel behind the buttons. (Not opacity on the card: that flattens the 3D card and hides its back.) */
+  background: rgba(0, 0, 0, .4);
 }
 .controls button {
   --b: clamp(28px, calc(var(--cw) * .26), 44px);
@@ -107,11 +109,10 @@ body.ui-hidden #stage { inset: 0; }
 
 body.manual .piece:focus-within .controls,
 body.manual .piece.active .controls { opacity: 1; pointer-events: auto; }
-body.manual .piece:focus-within .card,
-body.manual .piece.active .card { opacity: .55; }
+
 @media (hover: hover) {
   body.manual .piece:hover .controls { opacity: 1; pointer-events: auto; }
-  body.manual .piece:hover .card { opacity: .55; }
+
 }
 
 /* Moving a panel: the chosen panel is outlined, others become targets */
@@ -125,7 +126,7 @@ body.moving .piece:not(.move-from):hover::after {
 }
 body.moving .piece:not(.move-from) { cursor: copy; }
 body.moving .piece:not(.move-from) .controls { opacity: 0 !important; pointer-events: none !important; }
-body.moving .piece:not(.move-from) .card { opacity: 1 !important; }
+
 
 /* ---------- Side panel ---------- */
 #panel {

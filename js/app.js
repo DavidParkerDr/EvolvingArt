@@ -167,9 +167,10 @@ const mod360 = (a) => ((a % 360) + 360) % 360;
 class Panel {
   constructor(index) {
     this.index = index;                                  // 0..11
-    // Cumulative card angles (degrees): rotateZ(z) rotateX(x) rotateY(y).
-    // Turning over sideways adds 180 to y; top-to-bottom adds 180 to x; turning adds 90 or 180 to z.
-    this.angles = { x: 0, y: 0, z: 0 };
+    // Orientation as seen on screen: which face is showing, and how far it is turned clockwise.
+    this.frontVisible = true;
+    this.rotation = 0;
+    this.animating = false;
     this.slot = index;
 
     this.el = document.createElement('div');
@@ -192,11 +193,9 @@ class Panel {
     this.el.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') attachControls(this); });
     this.el.addEventListener('focus', () => attachControls(this));
     this.setSlot(index);
-    this.render(false);
+    this.show(Panel.pose(true, 0));
   }
 
-  get frontVisible() { return mod360(this.angles.y + this.angles.x) === 0; }
-  get rotation() { return mod360(this.angles.z + this.angles.x); }
   get encoding() { return new PaintingEncoding(this.index, this.rotation, this.frontVisible); }
   get faceKey() { return `${this.index + 1}${this.frontVisible ? 'a' : 'b'}`; }
 
@@ -217,40 +216,69 @@ class Panel {
     this.el.style.setProperty('--row', Math.floor(slot / state.columns));
   }
 
-  render(animate) {
-    this.card.classList.toggle('snap', !animate);
-    const { x, y, z } = this.angles;
-    this.card.style.transform = `rotateZ(${z}deg) rotateX(${x}deg) rotateY(${y}deg)`;
-    if (!animate) {
-      void this.card.offsetWidth; // apply without transition
-      this.card.classList.remove('snap');
+  /** The resting transform for an orientation: turn the card over (about its vertical axis) to show
+   *  the right face, then turn it clockwise in the plane of the screen. */
+  static pose(frontVisible, rotation) {
+    return `rotateZ(${rotation}deg) rotateY(${frontVisible ? 0 : 180}deg)`;
+  }
+
+  /** Jump to `from`, then (if given) animate to `to`. Both must use the same list of transform
+   *  functions so the browser interpolates each angle rather than the matrices. */
+  show(from, to = null) {
+    this.card.classList.add('snap');
+    this.card.style.transform = from;
+    void this.card.offsetWidth; // apply without transition
+    this.card.classList.remove('snap');
+    if (to) {
+      this.animating = true;
+      this.card.style.transform = to;
     }
     this.updateLabel();
   }
 
-  /** After an animation, fold the angles back into an equivalent small form (no visible change). */
+  /** After an animation, swap to the equivalent resting transform (no visible change). */
   normalise() {
-    const { x, y, z } = this.angles;
-    if (x === 0 && y >= 0 && y < 360 && z >= 0 && z < 360) return;
-    this.angles = { x: 0, y: mod360(y + x), z: mod360(z + x) };
-    this.render(false);
+    if (!this.animating) return;
+    this.animating = false;
+    this.show(Panel.pose(this.frontVisible, this.rotation));
   }
 
-  flipHorizontal() { this.angles.y += 180; this.render(true); }
-  flipVertical() { this.angles.x += 180; this.render(true); }
-  turn() { this.angles.z += state.set.rotations.length === 4 ? 90 : 180; this.render(true); }
+  /** Apply a turn/flip in screen space, prefixed onto the current pose, and animate it. */
+  #act(fn, angle, frontVisible, rotation) {
+    const rest = Panel.pose(this.frontVisible, this.rotation);
+    this.frontVisible = frontVisible;
+    this.rotation = mod360(rotation);
+    this.show(`${fn}(0deg) ${rest}`, `${fn}(${angle}deg) ${rest}`);
+  }
+
+  // Turning over about the screen's vertical axis mirrors the turn: r → −r.
+  flipHorizontal() { this.#act('rotateY', 180, !this.frontVisible, -this.rotation); }
+  // Turning over about the screen's horizontal axis: r → 180° − r.
+  flipVertical() { this.#act('rotateX', 180, !this.frontVisible, 180 - this.rotation); }
+  turn() {
+    const step = state.set.rotations.length === 4 ? 90 : 180;
+    this.#act('rotateZ', step, this.frontVisible, this.rotation + step);
+  }
 
   /** Show the given face/rotation, animating the shortest way there. */
   setState(frontVisible, rotation, animate) {
     if (!animate) {
-      this.angles = { x: 0, y: frontVisible ? 0 : 180, z: rotation };
-    } else {
-      if (frontVisible !== this.frontVisible) this.angles.y += 180;
-      let dz = mod360(rotation - this.rotation);
-      if (dz === 270) dz = -90;
-      this.angles.z += dz;
+      this.animating = false;
+      this.frontVisible = frontVisible;
+      this.rotation = rotation;
+      this.show(Panel.pose(frontVisible, rotation));
+      return;
     }
-    this.render(animate);
+    let dz = mod360(rotation - this.rotation);
+    if (dz === 270) dz = -90;
+    const fromY = this.frontVisible ? 0 : 180;
+    const toY = fromY + (frontVisible !== this.frontVisible ? 180 : 0);
+    const from = `rotateZ(${this.rotation}deg) rotateY(${fromY}deg)`;
+    const to = `rotateZ(${this.rotation + dz}deg) rotateY(${toY}deg)`;
+    this.frontVisible = frontVisible;
+    this.rotation = rotation;
+    if (from === to) { this.show(Panel.pose(frontVisible, rotation)); return; }
+    this.show(from, to);
   }
 }
 
