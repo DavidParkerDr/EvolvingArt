@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Evolving Art</title>
+  <meta name="description" content="An evolving musical painting on the boundary between permanence and change — twelve double-sided panels, rearranged endlessly by chance and by evolution.">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <main id="stage" aria-label="Artwork">
+    <div id="grid" role="grid" aria-label="Twelve painted panels in a three by four grid"></div>
+    <p id="loading" hidden>Loading panels…</p>
+  </main>
+
+  <button id="show-ui" class="ghost-button" title="Show controls (Esc)" aria-label="Show controls" hidden>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </button>
+
+  <aside id="panel" aria-label="Controls">
+    <header class="panel-header">
+      <h1>Evolving Art</h1>
+      <div class="header-actions">
+        <button id="sound-toggle" class="icon-button" aria-pressed="true" title="Sound on/off (M)">
+          <svg class="icon-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6L8 10H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+          <svg class="icon-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4h4l5 4V6L8 10H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+        </button>
+        <button id="fullscreen" class="icon-button" title="Full screen (F)" aria-label="Full screen">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
+        <button id="hide-ui" class="icon-button" title="Hide controls (H) — press Esc to bring them back" aria-label="Hide controls">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" aria-controls="tab-explore" id="t-explore">Explore</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-evolve" id="t-evolve">Evolve</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-settings" id="t-settings">Settings</button>
+      <button role="tab" aria-selected="false" aria-controls="tab-about" id="t-about">About</button>
+    </nav>
+
+    <section id="tab-explore" role="tabpanel" aria-labelledby="t-explore">
+      <p class="hint">Hover over (or tap) a panel to turn it over, turn it upside down, or move it to another slot.</p>
+      <div class="button-stack">
+        <button id="randomise" class="primary">Randomise</button>
+        <button id="slideshow" aria-pressed="false">Start random slideshow</button>
+      </div>
+      <div class="readout">
+        <span class="label">Fitness of this arrangement</span>
+        <span id="current-fitness" class="value">–</span>
+        <span class="note">Average colour difference where panels meet. Lower is more harmonious.</span>
+      </div>
+      <div class="button-row">
+        <button id="save-grid">Save arrangement</button>
+        <button id="load-grid">Load…</button>
+      </div>
+      <button id="copy-link" class="wide">Copy link to this arrangement</button>
+      <p id="explore-status" class="status" role="status"></p>
+    </section>
+
+    <section id="tab-evolve" role="tabpanel" aria-labelledby="t-evolve" hidden>
+      <p class="hint">A genetic algorithm breeds arrangements, keeping those whose panels meet most harmoniously. The best arrangement so far is shown as it evolves.</p>
+      <div class="button-stack">
+        <button id="evolve" class="primary">Start evolution</button>
+        <button id="reset-evolve" hidden>Reset evolution</button>
+      </div>
+      <div id="evolve-progress" class="progress" hidden>
+        <div class="progress-bar"><div id="progress-fill"></div></div>
+        <dl class="stats">
+          <dt>Generation</dt><dd id="generation">0</dd>
+          <dt>Best fitness</dt><dd id="best-fitness">–</dd>
+          <dt>First generation</dt><dd id="start-fitness">–</dd>
+        </dl>
+      </div>
+      <label class="field">
+        <span>Pace</span>
+        <select id="pace">
+          <option value="fast">Fast</option>
+          <option value="1000">One generation per second</option>
+          <option value="slide" selected>Match slide duration</option>
+        </select>
+      </label>
+      <div class="button-row">
+        <button id="save-ga" disabled>Save run</button>
+        <button id="load-ga">Load run…</button>
+      </div>
+      <p id="evolve-status" class="status" role="status"></p>
+    </section>
+
+    <section id="tab-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
+      <h2>General</h2>
+      <label class="field">
+        <span>Painting set</span>
+        <select id="set-choice">
+          <option value="1">Roberto 1</option>
+          <option value="2">Roberto 2</option>
+          <option value="3" selected>Roberto 3 (with music)</option>
+          <option value="4">Roberto 4</option>
+        </select>
+      </label>
+      <h2>Slideshow</h2>
+      <label class="field">
+        <span>Slide duration</span>
+        <select id="slide-duration">
+          <option value="1">1 second</option>
+          <option value="2">2 seconds</option>
+          <option value="3">3 seconds</option>
+          <option value="4">4 seconds</option>
+          <option value="5">5 seconds</option>
+          <option value="6" selected>6 seconds</option>
+          <option value="9.6">9.6 seconds</option>
+        </select>
+      </label>
+      <h2>Evolution</h2>
+      <label class="field">
+        <span>Fitness type</span>
+        <select id="fitness-type">
+          <option value="0">Average colour of whole panels</option>
+          <option value="1" selected>Matching edge pixels</option>
+        </select>
+      </label>
+      <label class="field" id="edge-thickness-field">
+        <span>Edge thickness (px)</span>
+        <input id="edge-thickness" type="number" min="1" max="50" step="1" value="1">
+      </label>
+      <label class="field">
+        <span>Max generations</span>
+        <input id="max-generations" type="number" min="1" max="100000" step="1" value="100">
+      </label>
+      <label class="field">
+        <span>Population size</span>
+        <input id="population-size" type="number" min="4" max="1000" step="2" value="40">
+      </label>
+      <label class="field">
+        <span>Mutation rate</span>
+        <input id="mutation-rate" type="number" min="0" max="1" step="0.01" value="0.05">
+      </label>
+      <label class="field">
+        <span>Crossover rate</span>
+        <input id="crossover-rate" type="number" min="0" max="1" step="0.05" value="0.7">
+      </label>
+      <button id="defaults" class="wide">Restore default settings</button>
+    </section>
+
+    <section id="tab-about" role="tabpanel" aria-labelledby="t-about" hidden>
+      <h2>An evolving musical painting</h2>
+      <p>Works of art are usually fixed in time by the artist. Here the artwork is a landscape of possibilities: twelve double-sided panels that can be turned over, turned upside down and rearranged into a vast number of compositions. Each visit is a different journey through it.</p>
+      <p>Journeys can be random, or evolutionary: a genetic algorithm searches for arrangements where colour and pattern flow across the edges between panels.</p>
+      <h2>Credits</h2>
+      <dl class="credits">
+        <dt>Panels</dt><dd>Roberto Bono</dd>
+        <dt>Music</dt><dd>Andrea Alberti and Bob Salmieri</dd>
+        <dt>Concept and algorithms</dt><dd>Yiannis Papadopoulos, David Parker, Martin Walker and Emma-Jane Alexander</dd>
+        <dt></dt><dd>Department of Computer Science, University of Hull</dd>
+      </dl>
+      <h2>Keyboard</h2>
+      <dl class="keys">
+        <dt><kbd>R</kbd></dt><dd>Randomise</dd>
+        <dt><kbd>S</kbd></dt><dd>Start / stop slideshow</dd>
+        <dt><kbd>E</kbd></dt><dd>Start / pause evolution</dd>
+        <dt><kbd>M</kbd></dt><dd>Sound on / off</dd>
+        <dt><kbd>F</kbd></dt><dd>Full screen</dd>
+        <dt><kbd>H</kbd></dt><dd>Hide controls</dd>
+        <dt><kbd>Esc</kbd></dt><dd>Show controls / cancel a move</dd>
+      </dl>
+    </section>
+  </aside>
+
+  <div id="intro" role="dialog" aria-modal="true" aria-labelledby="intro-title">
+    <div class="intro-inner">
+      <h1 id="intro-title">Evolving Art</h1>
+      <p class="tagline">A musical painting on the boundary between permanence and change</p>
+      <button id="begin" class="primary">Begin</button>
+      <p class="small">Best with sound on.</p>
+    </div>
+  </div>
+
+  <input id="file-input" type="file" accept=".json,.xml,application/json,text/xml" hidden>
+</body>
+</html>
